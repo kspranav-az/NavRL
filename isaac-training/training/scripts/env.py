@@ -174,11 +174,11 @@ class NavigationEnv(IsaacEnv):
                         vertical_scale=0.1,
                         border_width=0.0,
                         num_obstacles=self.cfg.env.num_obstacles,
-                        obstacle_height_mode="range",
+                        obstacle_height_mode="choice",  # Fixed: use "choice" instead of "range"
                         obstacle_width_range=(0.4, 1.1),
-                        obstacle_height_range=[1.0, 1.5, 2.0, 4.0, 6.0],
-                        obstacle_height_probability=[0.1, 0.15, 0.20, 0.55],
+                        obstacle_height_range=(1.0, 6.0),  # Fixed: use tuple instead of list
                         platform_width=0.0,
+                        # Removed obstacle_height_probability as it doesn't exist in IsaacLab
                     ),
                 },
             ),
