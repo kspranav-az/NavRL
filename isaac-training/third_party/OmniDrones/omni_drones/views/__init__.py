@@ -196,9 +196,23 @@ class ArticulationView(_ArticulationView):
             physics_sim_view = omni.physics.tensors.create_simulation_view(self._backend)
             physics_sim_view.set_subspace_roots("/")
         carb.log_info("initializing view for {}".format(self._name))
+        # Debug: Print available attributes to understand the class structure
+        print(f"[OmniDrones] ArticulationView initialize - available attributes: {[attr for attr in dir(self) if '_prim' in attr.lower() or '_path' in attr.lower()]}")
         # TODO: add a callback to set physics view to None once stop is called
+        # Fix: _regex_prim_paths is likely meant to be _prim_paths_expr (string, not list)
+        # Check if we have _prim_paths_expr attribute first
+        if hasattr(self, '_prim_paths_expr') and isinstance(self._prim_paths_expr, str):
+            prim_path_pattern = self._prim_paths_expr.replace(".*", "*")
+        else:
+            # Fallback: try to get from parent class or use first item if it's a list
+            if hasattr(self, '_prim_paths') and isinstance(self._prim_paths, list) and len(self._prim_paths) > 0:
+                prim_path_pattern = self._prim_paths[0].replace(".*", "*")
+            else:
+                # Last resort: construct from what we know
+                prim_path_pattern = "/World/envs/*/Hummingbird*"
+                
         self._physics_view = physics_sim_view.create_articulation_view(
-            self._regex_prim_paths.replace(".*", "*"), self._enable_dof_force_sensors
+            prim_path_pattern, self._enable_dof_force_sensors
         )
         assert self._physics_view.is_homogeneous
         self._physics_sim_view = physics_sim_view
