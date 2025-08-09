@@ -166,17 +166,26 @@ class NavigationEnv(IsaacEnv):
         # drone_prim = self.drone.spawn(translations=[(0.0, 0.0, 1.0)])[0]
         drone_prim = self.drone.spawn(translations=[(0.0, 0.0, 2.0)])[0]
 
-        # Enhanced lighting for better drone visibility
+        # Balanced lighting for clear visibility without overexposure
+        print("[NavigationEnv] Setting up balanced lighting...")
         light = AssetBaseCfg(
             prim_path="/World/light",
-            spawn=sim_utils.DistantLightCfg(color=(1.0, 1.0, 1.0), intensity=5000.0),  # Brighter white light
+            spawn=sim_utils.DistantLightCfg(
+                color=(1.0, 1.0, 0.95),      # Slightly warm white light
+                intensity=800.0,             # Much lower intensity for realistic lighting
+                angle=45.0                   # Softer shadows
+            ),
         )
         sky_light = AssetBaseCfg(
             prim_path="/World/skyLight",
-            spawn=sim_utils.DomeLightCfg(color=(0.8, 0.8, 1.0), intensity=3000.0),    # Brighter blue-white ambient
+            spawn=sim_utils.DomeLightCfg(
+                color=(0.7, 0.8, 1.0),       # Soft blue ambient light (like sky)
+                intensity=400.0              # Gentle ambient lighting
+            ),
         )
         light.spawn.func(light.prim_path, light.spawn, light.init_state.pos)
         sky_light.spawn.func(sky_light.prim_path, sky_light.spawn)
+        print("[NavigationEnv] Lighting setup complete - balanced for drone visibility")
         
         # Ground Plane - try nucleus server first, fallback to shape-based approach
         # Import prim_utils at the beginning for cleanup purposes
