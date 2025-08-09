@@ -27,7 +27,7 @@ from typing import Type, Dict
 import torch
 import torch.distributions as D
 import yaml
-from functorch import vmap
+from torch.func import vmap
 # from tensordict.nn import make_functional  # Removed in newer versions
 from torchrl.data import BoundedTensorSpec, CompositeSpec, UnboundedContinuousTensorSpec
 from tensordict import TensorDict
@@ -153,6 +153,7 @@ class MultirotorBase(RobotBase):
         self.throttle = self.rotors.throttle.expand(self.shape + (-1,)).clone()
         self.directions = self.rotors.directions.expand(self.shape + (-1,)).clone()
 
+
         self.thrusts = torch.zeros(*self.shape, self.num_rotors, 3, device=self.device)
         self.torques = torch.zeros(*self.shape, 3, device=self.device)
         self.forces = torch.zeros(*self.shape, 3, device=self.device)
@@ -252,9 +253,18 @@ class MultirotorBase(RobotBase):
     def apply_action(self, actions: torch.Tensor) -> torch.Tensor:
         rotor_cmds = actions.expand(*self.shape, self.num_rotors)
         last_throttle = self.throttle.clone()
-        thrusts, moments = vmap(vmap(self.rotors, randomness="different"), randomness="same")(
-            rotor_cmds, self.rotor_params
-        )
+        
+        # Update throttle state directly (since we can't use functorch parameters)
+        target_throttle = torch.sqrt(torch.clamp((rotor_cmds + 1) / 2, 0, 1))
+        tau = torch.where(target_throttle > self.throttle, self.tau_up, self.tau_down)
+        tau = torch.clamp(tau, 0, 1)
+        self.throttle.add_(tau * (target_throttle - self.throttle))
+        
+        # Compute thrusts and moments directly
+        noise = torch.randn_like(self.throttle) * 0.002 * 0.  # noise_scale * 0 (disabled)
+        t = torch.clamp(torch.square(self.throttle) + noise, 0., 1.)
+        thrusts = t * self.KF
+        moments = (t * self.KM) * -self.directions
 
         rotor_pos, rotor_rot = self.rotors_view.get_world_poses()
         torque_axis = quat_axis(rotor_rot.flatten(end_dim=-2), axis=2).unflatten(0, (*self.shape, self.num_rotors))
