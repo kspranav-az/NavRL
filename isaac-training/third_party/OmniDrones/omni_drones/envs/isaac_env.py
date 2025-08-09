@@ -69,9 +69,17 @@ class DebugDraw:
         self._draw = _debug_draw.acquire_debug_draw_interface()
     
     def clear(self):
-        self._draw.clear_lines()
+        if self._draw is not None:
+            self._draw.clear_lines()
+        else:
+            # Debug draw interface not available - this is normal in headless mode
+            pass
 
     def plot(self, x: torch.Tensor, size=2.0, color=(1., 1., 1., 1.)):
+        if self._draw is None:
+            # Debug draw interface not available - skip drawing
+            return
+            
         if not (x.ndim == 2) and (x.shape[1] == 3):
             raise ValueError("x must be a tensor of shape (N, 3).")
         x = x.cpu()
@@ -82,6 +90,10 @@ class DebugDraw:
         self._draw.draw_lines(point_list_0, point_list_1, colors, sizes)
         
     def vector(self, x: torch.Tensor, v: torch.Tensor, size=2.0, color=(0., 1., 1., 1.)):
+        if self._draw is None:
+            # Debug draw interface not available - skip drawing
+            return
+            
         x = x.cpu().reshape(-1, 3)
         v = v.cpu().reshape(-1, 3)
         if not (x.shape == v.shape):
