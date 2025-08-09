@@ -46,6 +46,8 @@ except ImportError:
 import omni
 import functools
 
+print("[OmniDrones] views/__init__.py is being loaded - patches will be applied")
+
 # Monkey patch ArticulationView to fix get_world_poses API compatibility issue
 # This addresses the "TypeError: ArticulationView.get_world_poses() got an unexpected keyword argument 'usd'"
 try:
@@ -149,6 +151,15 @@ class ArticulationView(_ArticulationView):
             reset_xform_properties,
             enable_dof_force_sensors,
         )
+    
+    def get_world_poses(self, *args, **kwargs):
+        """Override get_world_poses to handle API compatibility issues.
+        
+        This method removes the 'usd' parameter that is no longer supported in newer Isaac Sim versions.
+        """
+        # Remove 'usd' parameter if present to maintain compatibility
+        kwargs.pop('usd', None)
+        return super().get_world_poses(*args, **kwargs)
     
     @require_sim_initialized
     def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None) -> None:
