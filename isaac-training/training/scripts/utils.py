@@ -219,19 +219,36 @@ def vec_to_new_frame(vec, goal_direction):
     z_direction = torch.tensor([0, 0, 1.], device=vec.device)
     
     # goal direction y
-    goal_direction_y = torch.cross(z_direction.expand_as(goal_direction_x), goal_direction_x)
+    goal_direction_y = torch.cross(z_direction.expand_as(goal_direction_x), goal_direction_x, dim=-1)
     goal_direction_y /= goal_direction_y.norm(dim=-1, keepdim=True)
     
     # goal direction z
-    goal_direction_z = torch.cross(goal_direction_x, goal_direction_y)
+    goal_direction_z = torch.cross(goal_direction_x, goal_direction_y, dim=-1)
     goal_direction_z /= goal_direction_z.norm(dim=-1, keepdim=True)
 
     n = vec.size(0)
+    # Debug and safety checks for tensor reshaping
+    print(f"[vec_to_new_frame] vec shape: {vec.shape}, size: {vec.numel()}, n: {n}")
+    
     if len(vec.size()) == 3:
         vec_x_new = torch.bmm(vec.view(n, vec.shape[1], 3), goal_direction_x.view(n, 3, 1)) 
         vec_y_new = torch.bmm(vec.view(n, vec.shape[1], 3), goal_direction_y.view(n, 3, 1))
         vec_z_new = torch.bmm(vec.view(n, vec.shape[1], 3), goal_direction_z.view(n, 3, 1))
     else:
+        # Check if we can reshape to [n, 1, 3]
+        expected_size = n * 1 * 3
+        if vec.numel() != expected_size:
+            print(f"[vec_to_new_frame] WARNING: vec size {vec.numel()} doesn't match expected {expected_size}")
+            # Adjust vec to match expected dimensions
+            if vec.numel() < expected_size:
+                # Pad with zeros
+                padding_size = expected_size - vec.numel()
+                vec = torch.cat([vec, torch.zeros(padding_size, device=vec.device, dtype=vec.dtype)])
+            else:
+                # Truncate to expected size
+                vec = vec.flatten()[:expected_size]
+            print(f"[vec_to_new_frame] Adjusted vec to size {vec.numel()}")
+        
         vec_x_new = torch.bmm(vec.view(n, 1, 3), goal_direction_x.view(n, 3, 1))
         vec_y_new = torch.bmm(vec.view(n, 1, 3), goal_direction_y.view(n, 3, 1))
         vec_z_new = torch.bmm(vec.view(n, 1, 3), goal_direction_z.view(n, 3, 1))

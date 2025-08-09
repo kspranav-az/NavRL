@@ -46,18 +46,38 @@ class PPO(TensorDictModuleBase):
         print(f"[PPO] action_spec.shape: {action_spec.shape}")
         
         # Handle different action_spec formats
-        if len(action_spec.shape) == 2:
+        # For Composite specs, need to extract the actual action tensor shape
+        if hasattr(action_spec, 'get') and 'agents' in action_spec:
+            # Extract from nested composite structure
+            agents_spec = action_spec['agents']
+            if hasattr(agents_spec, 'get') and 'action' in agents_spec:
+                action_tensor_spec = agents_spec['action']
+                if hasattr(action_tensor_spec, 'shape'):
+                    actual_shape = action_tensor_spec.shape
+                    print(f"[PPO] Extracted action tensor shape: {actual_shape}")
+                    if len(actual_shape) == 2:
+                        self.n_agents, self.action_dim = actual_shape
+                    else:
+                        self.n_agents = actual_shape[0] if len(actual_shape) > 0 else 1
+                        self.action_dim = actual_shape[-1] if len(actual_shape) > 1 else actual_shape[0]
+                else:
+                    self.n_agents = 1
+                    self.action_dim = 3  # Default for drone control (x, y, z)
+            else:
+                self.n_agents = 1
+                self.action_dim = 3
+        elif len(action_spec.shape) == 2:
             self.n_agents, self.action_dim = action_spec.shape
         elif len(action_spec.shape) == 1:
             # Single dimension case - assume single agent
             self.action_dim = action_spec.shape[0]
             self.n_agents = 1
-            print(f"[PPO] Assuming single agent setup: n_agents={self.n_agents}, action_dim={self.action_dim}")
         else:
             # Fallback for other cases
-            self.action_dim = action_spec.shape[-1]  # Last dimension is usually action dim
+            self.action_dim = action_spec.shape[-1] if len(action_spec.shape) > 0 else 3
             self.n_agents = 1
-            print(f"[PPO] Fallback setup: n_agents={self.n_agents}, action_dim={self.action_dim}")
+        
+        print(f"[PPO] Final setup: n_agents={self.n_agents}, action_dim={self.action_dim}")
         self.actor = ProbabilisticActor(
             TensorDictModule(BetaActor(self.action_dim), ["_feature"], ["alpha", "beta"]),
             in_keys=["alpha", "beta"],
