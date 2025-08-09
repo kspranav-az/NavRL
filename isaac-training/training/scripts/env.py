@@ -166,14 +166,14 @@ class NavigationEnv(IsaacEnv):
         # drone_prim = self.drone.spawn(translations=[(0.0, 0.0, 1.0)])[0]
         drone_prim = self.drone.spawn(translations=[(0.0, 0.0, 2.0)])[0]
 
-        # lighting
+        # Enhanced lighting for better drone visibility
         light = AssetBaseCfg(
             prim_path="/World/light",
-            spawn=sim_utils.DistantLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
+            spawn=sim_utils.DistantLightCfg(color=(1.0, 1.0, 1.0), intensity=5000.0),  # Brighter white light
         )
         sky_light = AssetBaseCfg(
             prim_path="/World/skyLight",
-            spawn=sim_utils.DomeLightCfg(color=(0.2, 0.2, 0.3), intensity=2000.0),
+            spawn=sim_utils.DomeLightCfg(color=(0.8, 0.8, 1.0), intensity=3000.0),    # Brighter blue-white ambient
         )
         light.spawn.func(light.prim_path, light.spawn, light.init_state.pos)
         sky_light.spawn.func(sky_light.prim_path, sky_light.spawn)

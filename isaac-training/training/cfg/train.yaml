@@ -4,7 +4,7 @@ defaults:
   - ppo
   - sim
 
-headless: False
+headless: False  # Make sure visual rendering is enabled
 device: "cuda:0"
 seed: 0
 
@@ -15,20 +15,20 @@ save_interval: 1000
 
 # Training Environment
 env:
-  num_envs: 2 # Number of drones for training
+  num_envs: 9 # Start with 9 environments (3x3 grid = easy to see all drones)
   max_episode_length: 2200
-  env_spacing: 8.0 
-  num_obstacles: 350
+  env_spacing: 10.0  # Wide spacing so you can see each drone clearly
+  num_obstacles: 0   # NO obstacles - pure drone visibility
 
 env_dyn:
-  num_obstacles: 80 # set to zero if static env is needed
+  num_obstacles: 0  # Zero dynamic obstacles for maximum drone visibility
   vel_range: [0.5, 1.5]
   local_range: [5.0, 5.0, 4.5]
 
 viewer:
-  eye: [0., 40., 40.]
-  lookat: [0., 2.5, 0.]
-  resolution: [960, 720]
+  eye: [8., 8., 8.]    # Very close view - should definitely see drones
+  lookat: [0., 0., 2.]  # Looking directly at center drone
+  resolution: [1920, 1080]  # High resolution for clarity
 
 logger:
   backend: tensorboard  # or "csv"

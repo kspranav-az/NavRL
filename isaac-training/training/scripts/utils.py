@@ -228,7 +228,7 @@ def vec_to_new_frame(vec, goal_direction):
 
     n = vec.size(0)
     # Debug and safety checks for tensor reshaping
-    print(f"[vec_to_new_frame] vec shape: {vec.shape}, size: {vec.numel()}, n: {n}")
+    # print(f"[vec_to_new_frame] vec shape: {vec.shape}, size: {vec.numel()}, n: {n}")  # Debug line removed
     
     if len(vec.size()) == 3:
         vec_x_new = torch.bmm(vec.view(n, vec.shape[1], 3), goal_direction_x.view(n, 3, 1)) 
