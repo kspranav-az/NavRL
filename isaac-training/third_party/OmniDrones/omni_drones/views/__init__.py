@@ -139,18 +139,39 @@ class ArticulationView(_ArticulationView):
         enable_dof_force_sensors: bool = False,
         shape: Tuple[int, ...] = (-1,),
     ) -> None:
+        print(f"[OmniDrones] ArticulationView.__init__ called with prim_paths_expr: {prim_paths_expr}")
         self.shape = shape
-        super().__init__(
-            prim_paths_expr,
-            name,
-            positions,
-            translations,
-            orientations,
-            scales,
-            visibilities,
-            reset_xform_properties,
-            enable_dof_force_sensors,
-        )
+        
+        # Define the get_world_poses override before calling super().__init__
+        # This ensures it's available when the parent class calls it during initialization
+        def get_world_poses_override(*args, **kwargs):
+            """Override get_world_poses to handle API compatibility issues."""
+            if 'usd' in kwargs:
+                print(f"[OmniDrones] Removing 'usd' parameter from get_world_poses call")
+                kwargs.pop('usd', None)  # Remove 'usd' parameter if present
+            return _ArticulationView.get_world_poses(self, *args, **kwargs)
+        
+        # Temporarily set our override method
+        original_method = getattr(self, 'get_world_poses', None)
+        self.get_world_poses = get_world_poses_override
+        
+        try:
+            super().__init__(
+                prim_paths_expr,
+                name,
+                positions,
+                translations,
+                orientations,
+                scales,
+                visibilities,
+                reset_xform_properties,
+                enable_dof_force_sensors,
+            )
+        finally:
+            # Restore the original method or keep our override
+            if original_method:
+                self.get_world_poses = original_method
+            # If no original method, our override will remain
     
     def get_world_poses(self, *args, **kwargs):
         """Override get_world_poses to handle API compatibility issues.
