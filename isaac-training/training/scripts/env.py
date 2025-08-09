@@ -116,14 +116,20 @@ class NavigationEnv(IsaacEnv):
         sky_light.spawn.func(sky_light.prim_path, sky_light.spawn)
         
         # Ground Plane - try nucleus server first, fallback to shape-based approach
+        ground_plane_path = "/World/defaultGroundPlane"
         try:
             # Try using the standard ground plane (requires nucleus server)
             cfg_ground = sim_utils.GroundPlaneCfg(color=(0.1, 0.1, 0.1), size=(300., 300.))
-            cfg_ground.func("/World/defaultGroundPlane", cfg_ground)
+            cfg_ground.func(ground_plane_path, cfg_ground)
             print("[NavigationEnv] Using standard ground plane from nucleus server")
         except Exception as e:
             print(f"[NavigationEnv] Standard ground plane failed: {e}")
             print("[NavigationEnv] Falling back to shape-based ground plane")
+            
+            # Clean up any partial prim that may have been created
+            if prim_utils.is_prim_path_valid(ground_plane_path):
+                prim_utils.delete_prim(ground_plane_path)
+                print("[NavigationEnv] Cleaned up partial ground plane prim")
             
             # Fallback: Use cuboid shape instead of USD file
             from isaaclab.sim.spawners.shapes import CuboidCfg
@@ -141,7 +147,8 @@ class NavigationEnv(IsaacEnv):
                 ),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1), metallic=0.0),
             )
-            cfg_ground.func("/World/defaultGroundPlane", cfg_ground, translation=(0, 0, -0.05))
+            cfg_ground.func(ground_plane_path, cfg_ground, translation=(0, 0, -0.05))
+            print("[NavigationEnv] Successfully created shape-based ground plane")
 
         self.map_range = [20.0, 20.0, 4.5]
 
