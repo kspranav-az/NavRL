@@ -40,8 +40,24 @@ class PPO(TensorDictModuleBase):
             TensorDictModule(make_mlp([256, 256]), ["_feature"], ["_feature"]),
         ).to(self.device)
 
-        # Actor etwork
-        self.n_agents, self.action_dim = action_spec.shape
+        # Actor network
+        # Debug: Print action_spec shape to understand the structure
+        print(f"[PPO] action_spec: {action_spec}")
+        print(f"[PPO] action_spec.shape: {action_spec.shape}")
+        
+        # Handle different action_spec formats
+        if len(action_spec.shape) == 2:
+            self.n_agents, self.action_dim = action_spec.shape
+        elif len(action_spec.shape) == 1:
+            # Single dimension case - assume single agent
+            self.action_dim = action_spec.shape[0]
+            self.n_agents = 1
+            print(f"[PPO] Assuming single agent setup: n_agents={self.n_agents}, action_dim={self.action_dim}")
+        else:
+            # Fallback for other cases
+            self.action_dim = action_spec.shape[-1]  # Last dimension is usually action dim
+            self.n_agents = 1
+            print(f"[PPO] Fallback setup: n_agents={self.n_agents}, action_dim={self.action_dim}")
         self.actor = ProbabilisticActor(
             TensorDictModule(BetaActor(self.action_dim), ["_feature"], ["alpha", "beta"]),
             in_keys=["alpha", "beta"],
