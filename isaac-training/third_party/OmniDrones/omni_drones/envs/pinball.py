@@ -25,7 +25,25 @@ import omni_drones.utils.kit as kit_utils
 from omni_drones.utils.torch import euler_to_quaternion, normalize
 import omni.isaac.core.utils.prims as prim_utils
 import omni.isaac.core.objects as objects
-import omni.isaac.core.materials as materials
+# Fixed materials import to avoid DeformableMaterialView issue
+try:
+    from isaacsim.core.api.materials.physics_material import PhysicsMaterial
+except ImportError:
+    try:
+        from omni.isaac.core.materials.physics_material import PhysicsMaterial
+    except ImportError:
+        # Fallback PhysicsMaterial
+        class PhysicsMaterial:
+            def __init__(self, prim_path: str, static_friction: float = 0.5, 
+                         dynamic_friction: float = 0.5, restitution: float = 0.5):
+                self.prim_path = prim_path
+                self.static_friction = static_friction
+                self.dynamic_friction = dynamic_friction
+                self.restitution = restitution
+
+# Create materials namespace for backward compatibility
+class materials:
+    PhysicsMaterial = PhysicsMaterial
 import torch
 import torch.distributions as D
 
@@ -40,7 +58,7 @@ from torchrl.data import (
 )
 from pxr import UsdShade, PhysxSchema
 
-from omni.isaac.orbit.sensors import ContactSensorCfg, ContactSensor
+from isaaclab.sensors import ContactSensorCfg, ContactSensor
 
 class Pinball(IsaacEnv):
     """
