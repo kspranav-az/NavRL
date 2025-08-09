@@ -574,7 +574,46 @@ class NavigationEnv(IsaacEnv):
         
     def _pre_sim_step(self, tensordict: TensorDictBase):
         actions = tensordict[("agents", "action")] 
-        self.drone.apply_action(actions) 
+        
+        # Hover assistance for untrained policy (configurable)
+        if getattr(self.cfg.env, 'hover_assistance', True):
+            # This helps during early training when policy outputs near-zero actions
+            action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
+            is_small_action = action_magnitude < 0.15  # Threshold for "weak" velocity commands
+            
+            # Create hover assistance (small upward velocity + slight forward motion)
+            hover_assist = torch.zeros_like(actions)
+            hover_assist[..., 2] = 0.3  # Small upward velocity to counteract gravity
+            hover_assist[..., 0] = 0.1  # Tiny forward velocity for stability
+            
+            # Apply hover assistance only when policy outputs are too small
+            # This ensures trained policies aren't affected, only helps untrained ones
+            assisted_actions = torch.where(
+                is_small_action.unsqueeze(-1).expand_as(actions),
+                actions + hover_assist * 0.8,  # Scale down assistance
+                actions
+            )
+            
+            # Additional safety: ensure minimum action magnitude for stable flight
+            final_magnitude = torch.linalg.norm(assisted_actions, dim=-1, keepdim=True)
+            min_safe_magnitude = 0.05
+            safe_actions = torch.where(
+                final_magnitude < min_safe_magnitude,
+                assisted_actions * (min_safe_magnitude / (final_magnitude + 1e-8)),
+                assisted_actions
+            )
+            
+            # Update tensordict with assisted actions for consistency
+            tensordict[("agents", "action")] = safe_actions
+            
+            # Optional: Log assistance activity (uncomment for debugging)
+            # if self.progress_buf[0] % 100 == 0:  # Log every 100 steps
+            #     print(f"[NavigationEnv] Hover assistance - Action mag: {action_magnitude.mean():.3f}, Assisted: {torch.linalg.norm(safe_actions, dim=-1).mean():.3f}")
+        else:
+            safe_actions = actions
+        
+        # Apply the final actions to the drone
+        self.drone.apply_action(safe_actions) 
 
     def _post_sim_step(self, tensordict: TensorDictBase):
         if (self.cfg.env_dyn.num_obstacles != 0):
