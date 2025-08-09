@@ -202,20 +202,74 @@ class ArticulationView(_ArticulationView):
         # Debug: Print available attributes to understand the class structure
         print(f"[OmniDrones] ArticulationView initialize - available attributes: {[attr for attr in dir(self) if '_prim' in attr.lower() or '_path' in attr.lower()]}")
         
+        # Debug: Check the actual values of key attributes
+        if hasattr(self, '_regex_prim_paths'):
+            print(f"[OmniDrones] _regex_prim_paths exists: {self._regex_prim_paths} (type: {type(self._regex_prim_paths)})")
+        if hasattr(self, '_prim_paths'):
+            print(f"[OmniDrones] _prim_paths exists: {self._prim_paths} (type: {type(self._prim_paths)})")
+        
         # TODO: add a callback to set physics view to None once stop is called
         # Fix: Use _regex_prim_paths (confirmed to exist as string) and convert to physics pattern
+        prim_path_pattern = None
+        
+        # Priority 1: Check if _regex_prim_paths is a string (the pattern we want)
         if hasattr(self, '_regex_prim_paths') and isinstance(self._regex_prim_paths, str):
             prim_path_pattern = self._regex_prim_paths.replace(".*", "*")
             print(f"[OmniDrones] Using _regex_prim_paths: {self._regex_prim_paths} -> {prim_path_pattern}")
-        else:
-            # Fallback: construct from constructor parameter or other available paths
-            if hasattr(self, '_prim_paths') and isinstance(self._prim_paths, list) and len(self._prim_paths) > 0:
-                prim_path_pattern = self._prim_paths[0].replace(".*", "*")
-                print(f"[OmniDrones] Using _prim_paths[0]: {self._prim_paths[0]} -> {prim_path_pattern}")
+        
+        # Priority 2: If _regex_prim_paths is a list, try to extract pattern from it
+        elif hasattr(self, '_regex_prim_paths') and isinstance(self._regex_prim_paths, list) and len(self._regex_prim_paths) > 0:
+            # Try to reconstruct the pattern from the first path
+            first_path = self._regex_prim_paths[0]
+            if "/env_" in first_path and "/Hummingbird_" in first_path:
+                # Convert specific path back to pattern: /World/envs/env_0/Hummingbird_0 -> /World/envs/*/Hummingbird*
+                pattern_parts = first_path.split("/")
+                for i, part in enumerate(pattern_parts):
+                    if part.startswith("env_"):
+                        pattern_parts[i] = "*"
+                    elif part.startswith("Hummingbird_"):
+                        pattern_parts[i] = "Hummingbird*"
+                prim_path_pattern = "/".join(pattern_parts)
+                print(f"[OmniDrones] Reconstructed pattern from _regex_prim_paths[0]: {first_path} -> {prim_path_pattern}")
             else:
-                # Last resort: construct from what we know
-                prim_path_pattern = "/World/envs/*/Hummingbird*"
-                print(f"[OmniDrones] Using fallback pattern: {prim_path_pattern}")
+                prim_path_pattern = first_path.replace(".*", "*")
+                print(f"[OmniDrones] Using _regex_prim_paths[0]: {first_path} -> {prim_path_pattern}")
+        
+        # Priority 3: Fallback to _prim_paths if available
+        elif hasattr(self, '_prim_paths') and isinstance(self._prim_paths, list) and len(self._prim_paths) > 0:
+            first_path = self._prim_paths[0]
+            if "/env_" in first_path and "/Hummingbird_" in first_path:
+                # Convert specific path back to pattern
+                pattern_parts = first_path.split("/")
+                for i, part in enumerate(pattern_parts):
+                    if part.startswith("env_"):
+                        pattern_parts[i] = "*"
+                    elif part.startswith("Hummingbird_"):
+                        pattern_parts[i] = "Hummingbird*"
+                prim_path_pattern = "/".join(pattern_parts)
+                print(f"[OmniDrones] Reconstructed pattern from _prim_paths[0]: {first_path} -> {prim_path_pattern}")
+            else:
+                prim_path_pattern = first_path.replace(".*", "*")
+                print(f"[OmniDrones] Using _prim_paths[0]: {first_path} -> {prim_path_pattern}")
+        
+        # Priority 4: Last resort fallback
+        else:
+            prim_path_pattern = "/World/envs/*/Hummingbird*"
+            print(f"[OmniDrones] Using fallback pattern: {prim_path_pattern}")
+        
+        # Ensure the pattern is valid for multiple environment instances
+        if prim_path_pattern and not ("*" in prim_path_pattern or ".*" in prim_path_pattern):
+            print(f"[OmniDrones] WARNING: Pattern {prim_path_pattern} doesn't contain wildcards, this may cause issues with multiple environments")
+            # Force wildcard pattern
+            if "/env_" in prim_path_pattern and "/Hummingbird_" in prim_path_pattern:
+                pattern_parts = prim_path_pattern.split("/")
+                for i, part in enumerate(pattern_parts):
+                    if part.startswith("env_"):
+                        pattern_parts[i] = "*"
+                    elif part.startswith("Hummingbird_"):
+                        pattern_parts[i] = "Hummingbird*"
+                prim_path_pattern = "/".join(pattern_parts)
+                print(f"[OmniDrones] Fixed pattern to support multiple environments: {prim_path_pattern}")
         
         # Create ArticulationView with just the path pattern (following IsaacLab style)
         # Note: IsaacLab's create_articulation_view only takes the path pattern, not enable_dof_force_sensors
@@ -412,12 +466,45 @@ class ArticulationView(_ArticulationView):
     ) -> None:
         with disable_warnings(self._physics_sim_view):
             indices = self._resolve_env_indices(env_indices)
-            poses = self._physics_view.get_root_transforms()
-            if positions is not None:
-                poses[indices, :3] = positions.reshape(-1, 3)
-            if orientations is not None:
-                poses[indices, 3:] = orientations.reshape(-1, 4)[:, [1, 2, 3, 0]]
-            self._physics_view.set_root_transforms(poses, indices)
+            
+            # Safety checks to prevent GPU crash
+            if self._physics_view is None:
+                print("[OmniDrones] WARNING: set_world_poses called but _physics_view is None")
+                return
+                
+            try:
+                poses = self._physics_view.get_root_transforms()
+                
+                # Validate indices bounds
+                if indices is not None:
+                    max_index = poses.shape[0] - 1
+                    if torch.any(indices > max_index) or torch.any(indices < 0):
+                        print(f"[OmniDrones] ERROR: Invalid indices detected. Max valid index: {max_index}, indices range: {indices.min()}-{indices.max()}")
+                        print(f"[OmniDrones] Poses shape: {poses.shape}, indices: {indices}")
+                        # Clamp indices to valid range
+                        indices = torch.clamp(indices, 0, max_index)
+                        print(f"[OmniDrones] Clamped indices to valid range: {indices}")
+                
+                if positions is not None:
+                    positions_reshaped = positions.reshape(-1, 3)
+                    if indices.shape[0] != positions_reshaped.shape[0]:
+                        print(f"[OmniDrones] WARNING: Shape mismatch - indices: {indices.shape}, positions: {positions_reshaped.shape}")
+                    poses[indices, :3] = positions_reshaped
+                    
+                if orientations is not None:
+                    orientations_reshaped = orientations.reshape(-1, 4)[:, [1, 2, 3, 0]]
+                    if indices.shape[0] != orientations_reshaped.shape[0]:
+                        print(f"[OmniDrones] WARNING: Shape mismatch - indices: {indices.shape}, orientations: {orientations_reshaped.shape}")
+                    poses[indices, 3:] = orientations_reshaped
+                
+                print(f"[OmniDrones] set_world_poses: poses shape {poses.shape}, indices shape {indices.shape}")
+                self._physics_view.set_root_transforms(poses, indices)
+                
+            except Exception as e:
+                print(f"[OmniDrones] ERROR in set_world_poses: {e}")
+                print(f"[OmniDrones] Debug info - poses shape: {poses.shape if 'poses' in locals() else 'N/A'}")
+                print(f"[OmniDrones] Debug info - indices: {indices if 'indices' in locals() else 'N/A'}")
+                raise e
 
     def get_velocities(
         self, env_indices: Optional[torch.Tensor] = None, clone: bool = True
@@ -619,12 +706,45 @@ class RigidPrimView(_RigidPrimView):
     ) -> None:
         with disable_warnings(self._physics_sim_view):
             indices = self._resolve_env_indices(env_indices)
-            poses = self._physics_view.get_transforms()
-            if positions is not None:
-                poses[indices, :3] = positions.reshape(-1, 3)
-            if orientations is not None:
-                poses[indices, 3:] = orientations.reshape(-1, 4)[:, [1, 2, 3, 0]]
-            self._physics_view.set_transforms(poses, indices)
+            
+            # Safety checks to prevent GPU crash
+            if self._physics_view is None:
+                print("[OmniDrones] WARNING: set_world_poses called but _physics_view is None")
+                return
+                
+            try:
+                poses = self._physics_view.get_transforms()
+                
+                # Validate indices bounds
+                if indices is not None:
+                    max_index = poses.shape[0] - 1
+                    if torch.any(indices > max_index) or torch.any(indices < 0):
+                        print(f"[OmniDrones] ERROR: Invalid indices detected. Max valid index: {max_index}, indices range: {indices.min()}-{indices.max()}")
+                        print(f"[OmniDrones] Poses shape: {poses.shape}, indices: {indices}")
+                        # Clamp indices to valid range
+                        indices = torch.clamp(indices, 0, max_index)
+                        print(f"[OmniDrones] Clamped indices to valid range: {indices}")
+                
+                if positions is not None:
+                    positions_reshaped = positions.reshape(-1, 3)
+                    if indices.shape[0] != positions_reshaped.shape[0]:
+                        print(f"[OmniDrones] WARNING: Shape mismatch - indices: {indices.shape}, positions: {positions_reshaped.shape}")
+                    poses[indices, :3] = positions_reshaped
+                    
+                if orientations is not None:
+                    orientations_reshaped = orientations.reshape(-1, 4)[:, [1, 2, 3, 0]]
+                    if indices.shape[0] != orientations_reshaped.shape[0]:
+                        print(f"[OmniDrones] WARNING: Shape mismatch - indices: {indices.shape}, orientations: {orientations_reshaped.shape}")
+                    poses[indices, 3:] = orientations_reshaped
+                
+                print(f"[OmniDrones] RigidPrimView set_world_poses: poses shape {poses.shape}, indices shape {indices.shape}")
+                self._physics_view.set_transforms(poses, indices)
+                
+            except Exception as e:
+                print(f"[OmniDrones] ERROR in RigidPrimView set_world_poses: {e}")
+                print(f"[OmniDrones] Debug info - poses shape: {poses.shape if 'poses' in locals() else 'N/A'}")
+                print(f"[OmniDrones] Debug info - indices: {indices if 'indices' in locals() else 'N/A'}")
+                raise e
 
     def get_velocities(
         self, env_indices: Optional[torch.Tensor] = None, clone: bool = True
