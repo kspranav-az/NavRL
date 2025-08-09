@@ -142,6 +142,9 @@ class ArticulationView(_ArticulationView):
         print(f"[OmniDrones] ArticulationView.__init__ called with prim_paths_expr: {prim_paths_expr}")
         self.shape = shape
         
+        # Initialize _physics_sim_view to None to prevent AttributeError during parent initialization
+        self._physics_sim_view = None
+        
         # Define the get_world_poses override before calling super().__init__
         # This ensures it's available when the parent class calls it during initialization
         def get_world_poses_override(*args, **kwargs):
@@ -331,14 +334,18 @@ class ArticulationView(_ArticulationView):
         if not omni.timeline.get_timeline_interface().is_stopped() and self._physics_view is not None:
             if self.num_dof == 0:
                 return None
-            self._physics_sim_view.enable_warnings(False)
+            # Check if _physics_sim_view is available before using it
+            if self._physics_sim_view is not None:
+                self._physics_sim_view.enable_warnings(False)
             joint_positions = self._physics_view.get_dof_position_targets()
             if clone:
                 joint_positions = self._backend_utils.clone_tensor(joint_positions, device=self._device)
             joint_velocities = self._physics_view.get_dof_velocity_targets()
             if clone:
                 joint_velocities = self._backend_utils.clone_tensor(joint_velocities, device=self._device)
-            self._physics_sim_view.enable_warnings(True)
+            # Check if _physics_sim_view is available before using it
+            if self._physics_sim_view is not None:
+                self._physics_sim_view.enable_warnings(True)
             # TODO: implement the effort part
             return ArticulationActions(
                 joint_positions=joint_positions,
