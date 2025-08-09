@@ -16,6 +16,7 @@ import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import RigidObject, RigidObjectCfg
 import time
+import carb
 
 class NavigationEnv(IsaacEnv):
 
@@ -26,8 +27,28 @@ class NavigationEnv(IsaacEnv):
     # 4. _compute_state_and_obs (get observation and states, update stats)
     # 5. _compute_reward_and_done (update reward and calculate returns)
 
+    def _configure_nucleus_server(self):
+        """Configure the Nucleus server asset root for Isaac Sim."""
+        try:
+            # Set the asset root to point to localhost nucleus server
+            settings = carb.settings.get_settings()
+            asset_root = "omniverse://localhost/NVIDIA/Assets/Isaac/4.5"
+            
+            # Set the cloud asset root
+            settings.set("/persistent/isaac/asset_root/cloud", asset_root)
+            settings.set("/persistent/isaac/asset_root/default", asset_root)
+            
+            print(f"[NavigationEnv] Configured Nucleus server asset root: {asset_root}")
+            
+        except Exception as e:
+            print(f"[NavigationEnv] Warning: Could not configure Nucleus server: {e}")
+            print("[NavigationEnv] Will use shape-based ground plane instead")
+
     def __init__(self, cfg):
         print("[Navigation Environment]: Initializing Env...")
+        # Configure Nucleus server asset root before initialization
+        self._configure_nucleus_server()
+        
         # LiDAR params:
         self.lidar_range = cfg.sensor.lidar_range
         self.lidar_vfov = (max(-89., cfg.sensor.lidar_vfov[0]), min(89., cfg.sensor.lidar_vfov[1]))
@@ -94,9 +115,33 @@ class NavigationEnv(IsaacEnv):
         light.spawn.func(light.prim_path, light.spawn, light.init_state.pos)
         sky_light.spawn.func(sky_light.prim_path, sky_light.spawn)
         
-        # Ground Plane
-        cfg_ground = sim_utils.GroundPlaneCfg(color=(0.1, 0.1, 0.1), size=(300., 300.))
-        cfg_ground.func("/World/defaultGroundPlane", cfg_ground, translation=(0, 0, 0.01))
+        # Ground Plane - try nucleus server first, fallback to shape-based approach
+        try:
+            # Try using the standard ground plane (requires nucleus server)
+            cfg_ground = sim_utils.GroundPlaneCfg(color=(0.1, 0.1, 0.1), size=(300., 300.))
+            cfg_ground.func("/World/defaultGroundPlane", cfg_ground)
+            print("[NavigationEnv] Using standard ground plane from nucleus server")
+        except Exception as e:
+            print(f"[NavigationEnv] Standard ground plane failed: {e}")
+            print("[NavigationEnv] Falling back to shape-based ground plane")
+            
+            # Fallback: Use cuboid shape instead of USD file
+            from isaaclab.sim.spawners.shapes import CuboidCfg
+            from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg
+            
+            cfg_ground = CuboidCfg(
+                size=(300.0, 300.0, 0.1),  # Large flat ground plane
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),  # Static ground
+                mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+                collision_props=sim_utils.CollisionPropertiesCfg(),
+                physics_material=RigidBodyMaterialCfg(
+                    static_friction=1.0,
+                    dynamic_friction=1.0,
+                    restitution=0.0,
+                ),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1), metallic=0.0),
+            )
+            cfg_ground.func("/World/defaultGroundPlane", cfg_ground, translation=(0, 0, -0.05))
 
         self.map_range = [20.0, 20.0, 4.5]
 
