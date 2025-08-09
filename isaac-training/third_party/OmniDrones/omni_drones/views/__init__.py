@@ -142,6 +142,9 @@ class ArticulationView(_ArticulationView):
         print(f"[OmniDrones] ArticulationView.__init__ called with prim_paths_expr: {prim_paths_expr}")
         self.shape = shape
         
+        # Store enable_dof_force_sensors parameter for later use in initialize()
+        self._enable_dof_force_sensors = enable_dof_force_sensors
+        
         # Initialize _physics_sim_view to None to prevent AttributeError during parent initialization
         self._physics_sim_view = None
         
@@ -198,22 +201,37 @@ class ArticulationView(_ArticulationView):
         carb.log_info("initializing view for {}".format(self._name))
         # Debug: Print available attributes to understand the class structure
         print(f"[OmniDrones] ArticulationView initialize - available attributes: {[attr for attr in dir(self) if '_prim' in attr.lower() or '_path' in attr.lower()]}")
+        
         # TODO: add a callback to set physics view to None once stop is called
-        # Fix: _regex_prim_paths is likely meant to be _prim_paths_expr (string, not list)
-        # Check if we have _prim_paths_expr attribute first
-        if hasattr(self, '_prim_paths_expr') and isinstance(self._prim_paths_expr, str):
-            prim_path_pattern = self._prim_paths_expr.replace(".*", "*")
+        # Fix: Use _regex_prim_paths (confirmed to exist as string) and convert to physics pattern
+        if hasattr(self, '_regex_prim_paths') and isinstance(self._regex_prim_paths, str):
+            prim_path_pattern = self._regex_prim_paths.replace(".*", "*")
+            print(f"[OmniDrones] Using _regex_prim_paths: {self._regex_prim_paths} -> {prim_path_pattern}")
         else:
-            # Fallback: try to get from parent class or use first item if it's a list
+            # Fallback: construct from constructor parameter or other available paths
             if hasattr(self, '_prim_paths') and isinstance(self._prim_paths, list) and len(self._prim_paths) > 0:
                 prim_path_pattern = self._prim_paths[0].replace(".*", "*")
+                print(f"[OmniDrones] Using _prim_paths[0]: {self._prim_paths[0]} -> {prim_path_pattern}")
             else:
                 # Last resort: construct from what we know
                 prim_path_pattern = "/World/envs/*/Hummingbird*"
-                
-        self._physics_view = physics_sim_view.create_articulation_view(
-            prim_path_pattern, self._enable_dof_force_sensors
-        )
+                print(f"[OmniDrones] Using fallback pattern: {prim_path_pattern}")
+        
+        # Create ArticulationView with just the path pattern (following IsaacLab style)
+        # Note: IsaacLab's create_articulation_view only takes the path pattern, not enable_dof_force_sensors
+        print(f"[OmniDrones] Creating ArticulationView with pattern: {prim_path_pattern}")
+        try:
+            # Try with enable_dof_force_sensors parameter first
+            self._physics_view = physics_sim_view.create_articulation_view(
+                prim_path_pattern, self._enable_dof_force_sensors
+            )
+        except TypeError as e:
+            # If the signature doesn't support enable_dof_force_sensors, try without it
+            print(f"[OmniDrones] create_articulation_view doesn't support enable_dof_force_sensors: {e}")
+            print(f"[OmniDrones] Retrying without enable_dof_force_sensors parameter")
+            self._physics_view = physics_sim_view.create_articulation_view(prim_path_pattern)
+        
+        print(f"[OmniDrones] ArticulationView created successfully")
         assert self._physics_view.is_homogeneous
         self._physics_sim_view = physics_sim_view
         if not self._is_initialized:
