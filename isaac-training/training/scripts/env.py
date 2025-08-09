@@ -32,13 +32,20 @@ class NavigationEnv(IsaacEnv):
         try:
             # Set the asset root to point to localhost nucleus server
             settings = carb.settings.get_settings()
-            asset_root = "omniverse://localhost/NVIDIA/Assets/Isaac/4.5"
+            base_asset_root = "omniverse://localhost/NVIDIA/Assets"
+            isaac_asset_root = f"{base_asset_root}/Isaac/4.5"  # Default to 4.5, will work for most versions
             
-            # Set the cloud asset root
-            settings.set("/persistent/isaac/asset_root/cloud", asset_root)
-            settings.set("/persistent/isaac/asset_root/default", asset_root)
+            # Set multiple asset root configurations for better compatibility
+            settings.set("/persistent/isaac/asset_root/cloud", isaac_asset_root)
+            settings.set("/persistent/isaac/asset_root/default", isaac_asset_root)
+            settings.set("/persistent/isaac/asset_root/nvidia", base_asset_root)
             
-            print(f"[NavigationEnv] Configured Nucleus server asset root: {asset_root}")
+            # Also set the ISAAC_NUCLEUS_DIR if available
+            import os
+            os.environ["ISAAC_NUCLEUS_DIR"] = base_asset_root
+            
+            print(f"[NavigationEnv] Configured Nucleus server asset root: {isaac_asset_root}")
+            print(f"[NavigationEnv] Base asset path: {base_asset_root}")
             
         except Exception as e:
             print(f"[NavigationEnv] Warning: Could not configure Nucleus server: {e}")
@@ -185,9 +192,23 @@ class NavigationEnv(IsaacEnv):
             visual_material = None,
             max_init_terrain_level=None,
             collision_group=-1,
-            debug_vis=True,
+            debug_vis=True,  # Try with Nucleus server assets first
         )
-        terrain_importer = TerrainImporter(terrain_cfg)
+        
+        # Try to create terrain importer with debug visualization
+        try:
+            terrain_importer = TerrainImporter(terrain_cfg)
+            print("[NavigationEnv] TerrainImporter created successfully with debug visualization")
+        except FileNotFoundError as e:
+            if "frame_prim.usd" in str(e):
+                print(f"[NavigationEnv] Debug visualization failed: {e}")
+                print("[NavigationEnv] Retrying with debug_vis=False...")
+                # Retry without debug visualization
+                terrain_cfg.debug_vis = False
+                terrain_importer = TerrainImporter(terrain_cfg)
+                print("[NavigationEnv] TerrainImporter created successfully without debug visualization")
+            else:
+                raise e
 
         if (self.cfg.env_dyn.num_obstacles == 0):
             return
