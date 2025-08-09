@@ -136,7 +136,7 @@ class MultirotorBase(RobotBase):
 
         # Replace make_functional with direct parameter access (newer TensorDict API)
         # rotor_params = make_functional(self.rotors)  # Old API
-        # Access parameters directly from the module
+        # Access parameters directly from the module and expand for multiple environments
         self.KF_0 = self.rotors.KF.clone() if hasattr(self.rotors, 'KF') else torch.tensor(rotor_config.get('KF', 1.0)).to(self.device)
         self.KM_0 = self.rotors.KM.clone() if hasattr(self.rotors, 'KM') else torch.tensor(rotor_config.get('KM', 0.1)).to(self.device)
         self.MAX_ROT_VEL = (
@@ -144,14 +144,14 @@ class MultirotorBase(RobotBase):
             .float()
             .to(self.device)
         )
-        self.rotor_params = rotor_params.expand(self.shape).clone()
 
-        self.tau_up = self.rotor_params["tau_up"]
-        self.tau_down = self.rotor_params["tau_down"]
-        self.KF = self.rotor_params["KF"]
-        self.KM = self.rotor_params["KM"]
-        self.throttle = self.rotor_params["throttle"]
-        self.directions = self.rotor_params["directions"]
+        # Expand parameters for multiple environments (replacing the old rotor_params.expand())
+        self.tau_up = self.rotors.tau_up.expand(self.shape + (-1,)).clone()
+        self.tau_down = self.rotors.tau_down.expand(self.shape + (-1,)).clone()
+        self.KF = self.rotors.KF.expand(self.shape + (-1,)).clone()
+        self.KM = self.rotors.KM.expand(self.shape + (-1,)).clone()
+        self.throttle = self.rotors.throttle.expand(self.shape + (-1,)).clone()
+        self.directions = self.rotors.directions.expand(self.shape + (-1,)).clone()
 
         self.thrusts = torch.zeros(*self.shape, self.num_rotors, 3, device=self.device)
         self.torques = torch.zeros(*self.shape, 3, device=self.device)
