@@ -28,7 +28,7 @@ import torch
 import torch.distributions as D
 import yaml
 from functorch import vmap
-from tensordict.nn import make_functional
+# from tensordict.nn import make_functional  # Removed in newer versions
 from torchrl.data import BoundedTensorSpec, CompositeSpec, UnboundedContinuousTensorSpec
 from tensordict import TensorDict
 
@@ -134,9 +134,11 @@ class MultirotorBase(RobotBase):
         rotor_config = self.params["rotor_configuration"]
         self.rotors = RotorGroup(rotor_config, dt=self.dt).to(self.device)
 
-        rotor_params = make_functional(self.rotors)
-        self.KF_0 = rotor_params["KF"].clone()
-        self.KM_0 = rotor_params["KM"].clone()
+        # Replace make_functional with direct parameter access (newer TensorDict API)
+        # rotor_params = make_functional(self.rotors)  # Old API
+        # Access parameters directly from the module
+        self.KF_0 = self.rotors.KF.clone() if hasattr(self.rotors, 'KF') else torch.tensor(rotor_config.get('KF', 1.0)).to(self.device)
+        self.KM_0 = self.rotors.KM.clone() if hasattr(self.rotors, 'KM') else torch.tensor(rotor_config.get('KM', 0.1)).to(self.device)
         self.MAX_ROT_VEL = (
             torch.as_tensor(rotor_config["max_rotation_velocities"])
             .float()

@@ -24,7 +24,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from tensordict.nn import TensorDictModule, make_functional
+from tensordict.nn import TensorDictModule
+# from tensordict.nn import make_functional  # Removed in newer versions
+try:
+    from tensordict.nn import TensorDictParams
+except ImportError:
+    # Fallback for newer versions
+    from tensordict import TensorDict as TensorDictParams
 from tensordict import TensorDict
 from functorch import vmap
 
@@ -101,13 +107,15 @@ class MATD3Policy(object):
         if self.cfg.share_actor:
             self.actor = create_actor()
             self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.cfg.actor.lr)
-            self.actor_params = make_functional(self.actor).expand(self.agent_spec.n)
+            # Replace make_functional with TensorDictParams (newer API)
+            self.actor_params = TensorDictParams(self.actor.state_dict()).expand(self.agent_spec.n)
             self.actor_target_params = self.actor_params.clone()
         else:
             actors = nn.ModuleList([create_actor() for _ in range(self.agent_spec.n)])
             self.actor = actors[0]
             self.actor_opt = torch.optim.Adam(actors.parameters(), lr=self.cfg.actor.lr)
-            self.actor_params = torch.stack([make_functional(actor) for actor in actors])
+            # Replace make_functional with TensorDictParams (newer API)
+            self.actor_params = torch.stack([TensorDictParams(actor.state_dict()) for actor in actors])
             self.actor_target_params = self.actor_params.clone()
 
         if self.agent_spec.state_spec is not None:

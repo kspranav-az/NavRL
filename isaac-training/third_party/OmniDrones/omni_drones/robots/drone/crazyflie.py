@@ -25,7 +25,7 @@ import torch
 
 from omni.isaac.core.prims import RigidPrimView
 from omni.isaac.core.utils.nucleus import get_assets_root_path
-from tensordict.nn import make_functional
+# from tensordict.nn import make_functional  # Removed in newer versions
 from torchrl.data import BoundedTensorSpec, UnboundedContinuousTensorSpec
 
 from omni_drones.actuators.rotor_group import RotorGroup

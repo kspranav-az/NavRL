@@ -26,7 +26,7 @@ import torch
 from dataclasses import dataclass, field, MISSING, fields, asdict
 
 from torchrl.data import BoundedTensorSpec, UnboundedContinuousTensorSpec, CompositeSpec
-from tensordict.nn import make_functional
+# from tensordict.nn import make_functional  # Removed in newer versions
 
 try:
     import isaacsim.core.utils.prims as prim_utils
@@ -144,12 +144,13 @@ class Dragon(MultirotorBase):
         self.gravity = self.body_masses.sum(-1, keepdim=True) * 9.81
 
         self.rotors = RotorGroup(asdict(self.cfg.rotor_cfg), self.dt).to(self.device)
-        rotor_params = make_functional(self.rotors)
-        self.rotor_params = rotor_params.expand(self.shape).clone()
-        self.throttle = self.rotor_params["throttle"]
+        # Replace make_functional with direct parameter access (newer TensorDict API)
+        # rotor_params = make_functional(self.rotors)  # Old API
+        # Access parameters directly from the module and expand for multiple environments
+        self.throttle = self.rotors.throttle.expand(self.shape + (-1,)).clone()
         self.throttle_difference = torch.zeros_like(self.throttle)
-        self.KF = self.rotor_params["KF"]
-        self.KM = self.rotor_params["KM"]
+        self.KF = self.rotors.KF.expand(self.shape + (-1,)).clone()
+        self.KM = self.rotors.KM.expand(self.shape + (-1,)).clone()
 
         self.thrusts = torch.zeros(*self.shape, self.cfg.rotor_cfg.num_rotors, 3, device=self.device)
         self.torques = torch.zeros(*self.shape, self.num_links, 3, device=self.device)
