@@ -3,6 +3,37 @@ import einops
 import numpy as np
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torchrl.data import UnboundedContinuousTensorSpec, CompositeSpec, DiscreteTensorSpec
+import time
+import carb
+
+# Configure Nucleus server immediately BEFORE any IsaacLab imports
+def _configure_nucleus_server_early():
+    """Configure the Nucleus server asset root for Isaac Sim early in the import process."""
+    try:
+        # Set the asset root to point to localhost nucleus server
+        settings = carb.settings.get_settings()
+        base_asset_root = "omniverse://localhost/NVIDIA/Assets"
+        isaac_asset_root = f"{base_asset_root}/Isaac/4.5"
+        
+        # Set multiple asset root configurations
+        settings.set("/persistent/isaac/asset_root/cloud", isaac_asset_root)
+        settings.set("/persistent/isaac/asset_root/default", isaac_asset_root)
+        settings.set("/persistent/isaac/asset_root/nvidia", base_asset_root)
+        
+        # Set environment variables
+        import os
+        os.environ["ISAAC_NUCLEUS_DIR"] = f"{isaac_asset_root}"
+        os.environ["NUCLEUS_ASSET_ROOT_DIR"] = isaac_asset_root
+        
+        print(f"[NavigationEnv] Early Nucleus configuration: {isaac_asset_root}")
+        
+    except Exception as e:
+        print(f"[NavigationEnv] Early Nucleus configuration failed: {e}")
+
+# Call the configuration immediately
+_configure_nucleus_server_early()
+
+# Now import IsaacLab modules after Nucleus configuration
 from omni_drones.envs.isaac_env import IsaacEnv, AgentSpec
 from omni_drones.robots.drone import MultirotorBase
 from isaaclab.assets import AssetBaseCfg
@@ -15,8 +46,19 @@ import isaacsim.core.utils.prims as prim_utils
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import RigidObject, RigidObjectCfg
-import time
-import carb
+
+# Patch the isaaclab.utils.assets module immediately after import
+try:
+    import isaaclab.utils.assets as assets_module
+    base_asset_root = "omniverse://localhost/NVIDIA/Assets"
+    isaac_asset_root = f"{base_asset_root}/Isaac/4.5"
+    assets_module.NUCLEUS_ASSET_ROOT_DIR = isaac_asset_root
+    assets_module.ISAAC_NUCLEUS_DIR = isaac_asset_root
+    assets_module.NVIDIA_NUCLEUS_DIR = base_asset_root
+    assets_module.ISAACLAB_NUCLEUS_DIR = f"{isaac_asset_root}/IsaacLab"
+    print(f"[NavigationEnv] Patched IsaacLab assets module with Nucleus paths")
+except Exception as e:
+    print(f"[NavigationEnv] Failed to patch assets module: {e}")
 
 class NavigationEnv(IsaacEnv):
 
@@ -137,6 +179,9 @@ class NavigationEnv(IsaacEnv):
         sky_light.spawn.func(sky_light.prim_path, sky_light.spawn)
         
         # Ground Plane - try nucleus server first, fallback to shape-based approach
+        # Import prim_utils at the beginning for cleanup purposes
+        from isaacsim.core.utils import prims as prim_utils
+        
         ground_plane_path = "/World/defaultGroundPlane"
         try:
             # Try using the standard ground plane (requires nucleus server)
