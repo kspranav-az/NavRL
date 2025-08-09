@@ -1,0 +1,33 @@
+# Different camera view configurations for better drone visibility
+# Copy any of these into your train.yaml viewer section
+
+# Option 1: Close overhead view (best for seeing individual drones)
+close_overhead:
+  eye: [0., 0., 25.]     # Directly above, 25m high
+  lookat: [0., 0., 2.]   # Looking down at drone level
+  resolution: [1920, 1080]
+
+# Option 2: Angled view for 3x3 grid
+angled_grid:
+  eye: [20., 20., 15.]   # Angled view from corner
+  lookat: [0., 0., 2.]   # Center of grid
+  resolution: [1920, 1080]
+
+# Option 3: Side view (good for seeing drone movement)
+side_view:
+  eye: [30., 0., 10.]    # From the side
+  lookat: [0., 0., 2.]   # Looking at center
+  resolution: [1920, 1080]
+
+# Option 4: Wide overview (for many environments)
+wide_overview:
+  eye: [0., 50., 50.]    # High and far back
+  lookat: [0., 0., 0.]   # Looking at ground level
+  resolution: [1920, 1080]
+
+# Option 5: First-person follow (dynamic camera)
+follow_drone:
+  eye: [5., 5., 5.]      # Close to first drone
+  lookat: [0., 0., 2.]   # Following drone
+  resolution: [1920, 1080]
+
