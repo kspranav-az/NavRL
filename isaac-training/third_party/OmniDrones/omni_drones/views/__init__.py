@@ -46,6 +46,19 @@ except ImportError:
 import omni
 import functools
 
+# Monkey patch ArticulationView to fix get_world_poses API compatibility issue
+# This addresses the "TypeError: ArticulationView.get_world_poses() got an unexpected keyword argument 'usd'"
+try:
+    _original_articulation_view_get_world_poses = _ArticulationView.get_world_poses
+    def _patched_get_world_poses(self, *args, **kwargs):
+        # Remove 'usd' parameter if present to maintain compatibility
+        kwargs.pop('usd', None)
+        return _original_articulation_view_get_world_poses(self, *args, **kwargs)
+    _ArticulationView.get_world_poses = _patched_get_world_poses
+    print("[OmniDrones] Applied ArticulationView.get_world_poses compatibility patch")
+except Exception as e:
+    print(f"[OmniDrones] Failed to apply ArticulationView patch: {e}")
+
 
 def require_sim_initialized(func):
 
