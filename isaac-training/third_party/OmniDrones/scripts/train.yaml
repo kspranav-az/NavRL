@@ -21,16 +21,10 @@ viewer:
   lookat: [0., 0., 1.]
 
 # oc.select: https://omegaconf.readthedocs.io/en/2.1_branch/custom_resolvers.html#oc-decode
-wandb:
-  group: ${oc.select:..task.name}
-  run_name: ${oc.select:..task.name,test}-${oc.select:..algo.name,none}
-  job_type: train
-  entity: marl-drones
-  project: omnidrones
-  mode: online # set to 'disabled' when debugging locally
-  run_id: 
-  monitor_gym: True
-  tags: 
+logger:
+  backend: tensorboard
+  log_dir: logs
+  exp_name: DroneExp
 
 defaults:
   - task: Hover
