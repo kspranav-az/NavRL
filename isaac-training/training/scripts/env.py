@@ -40,12 +40,26 @@ class NavigationEnv(IsaacEnv):
             settings.set("/persistent/isaac/asset_root/default", isaac_asset_root)
             settings.set("/persistent/isaac/asset_root/nvidia", base_asset_root)
             
-            # Also set the ISAAC_NUCLEUS_DIR if available
+            # Also set environment variables
             import os
-            os.environ["ISAAC_NUCLEUS_DIR"] = base_asset_root
+            os.environ["ISAAC_NUCLEUS_DIR"] = f"{isaac_asset_root}"
+            os.environ["NUCLEUS_ASSET_ROOT_DIR"] = isaac_asset_root
+            
+            # CRITICAL: Update the isaaclab.utils.assets module variables directly
+            # This fixes the None issue by updating the already-imported module
+            try:
+                import isaaclab.utils.assets as assets_module
+                assets_module.NUCLEUS_ASSET_ROOT_DIR = isaac_asset_root
+                assets_module.ISAAC_NUCLEUS_DIR = f"{isaac_asset_root}"
+                assets_module.NVIDIA_NUCLEUS_DIR = base_asset_root
+                assets_module.ISAACLAB_NUCLEUS_DIR = f"{isaac_asset_root}/IsaacLab"
+                print(f"[NavigationEnv] Updated IsaacLab assets module variables")
+            except ImportError:
+                pass  # IsaacLab may not be imported yet
             
             print(f"[NavigationEnv] Configured Nucleus server asset root: {isaac_asset_root}")
             print(f"[NavigationEnv] Base asset path: {base_asset_root}")
+            print(f"[NavigationEnv] ISAAC_NUCLEUS_DIR set to: {isaac_asset_root}")
             
         except Exception as e:
             print(f"[NavigationEnv] Warning: Could not configure Nucleus server: {e}")
@@ -203,6 +217,20 @@ class NavigationEnv(IsaacEnv):
             if "frame_prim.usd" in str(e):
                 print(f"[NavigationEnv] Debug visualization failed: {e}")
                 print("[NavigationEnv] Retrying with debug_vis=False...")
+                
+                # Clean up any partial terrain prims that may have been created
+                from isaacsim.core.utils import prims as prim_utils
+                terrain_prim_path = "/World/ground/terrain"
+                if prim_utils.is_prim_path_valid(terrain_prim_path):
+                    prim_utils.delete_prim(terrain_prim_path)
+                    print("[NavigationEnv] Cleaned up partial terrain prim")
+                
+                # Clean up the ground parent if it exists and is empty
+                ground_prim_path = "/World/ground"
+                if prim_utils.is_prim_path_valid(ground_prim_path):
+                    prim_utils.delete_prim(ground_prim_path)
+                    print("[NavigationEnv] Cleaned up ground prim")
+                
                 # Retry without debug visualization
                 terrain_cfg.debug_vis = False
                 terrain_importer = TerrainImporter(terrain_cfg)
