@@ -49,15 +49,59 @@ import functools
 # Monkey patch ArticulationView to fix get_world_poses API compatibility issue
 # This addresses the "TypeError: ArticulationView.get_world_poses() got an unexpected keyword argument 'usd'"
 try:
+    # Get the actual ArticulationView class that was imported
     _original_articulation_view_get_world_poses = _ArticulationView.get_world_poses
     def _patched_get_world_poses(self, *args, **kwargs):
         # Remove 'usd' parameter if present to maintain compatibility
         kwargs.pop('usd', None)
         return _original_articulation_view_get_world_poses(self, *args, **kwargs)
     _ArticulationView.get_world_poses = _patched_get_world_poses
-    print("[OmniDrones] Applied ArticulationView.get_world_poses compatibility patch")
+    print(f"[OmniDrones] Applied ArticulationView.get_world_poses compatibility patch to {_ArticulationView.__module__}.{_ArticulationView.__name__}")
 except Exception as e:
     print(f"[OmniDrones] Failed to apply ArticulationView patch: {e}")
+    
+# Additional patch: Also patch the base isaacsim ArticulationView if it exists and is different
+try:
+    from isaacsim.core.prims import ArticulationView as IsaacSimArticulationView
+    if IsaacSimArticulationView != _ArticulationView:
+        _original_isaacsim_get_world_poses = IsaacSimArticulationView.get_world_poses
+        def _patched_isaacsim_get_world_poses(self, *args, **kwargs):
+            kwargs.pop('usd', None)  # Remove 'usd' parameter if present
+            return _original_isaacsim_get_world_poses(self, *args, **kwargs)
+        IsaacSimArticulationView.get_world_poses = _patched_isaacsim_get_world_poses
+        print(f"[OmniDrones] Applied additional patch to {IsaacSimArticulationView.__module__}.{IsaacSimArticulationView.__name__}")
+except ImportError:
+    print("[OmniDrones] isaacsim.core.prims.ArticulationView not available for patching")
+except Exception as e:
+    print(f"[OmniDrones] Failed to apply additional ArticulationView patch: {e}")
+
+# Comprehensive patch: Try to patch XFormPrimView and any other related classes
+try:
+    # Patch XFormPrimView if it exists
+    if hasattr(XFormPrimView, 'get_world_poses'):
+        _original_xform_get_world_poses = XFormPrimView.get_world_poses
+        def _patched_xform_get_world_poses(self, *args, **kwargs):
+            kwargs.pop('usd', None)  # Remove 'usd' parameter if present
+            return _original_xform_get_world_poses(self, *args, **kwargs)
+        XFormPrimView.get_world_poses = _patched_xform_get_world_poses
+        print(f"[OmniDrones] Applied patch to {XFormPrimView.__module__}.{XFormPrimView.__name__}")
+except Exception as e:
+    print(f"[OmniDrones] Failed to patch XFormPrimView: {e}")
+
+# Also try to patch the XFormPrim class from isaacsim.core
+try:
+    from isaacsim.core.prims.impl.xform_prim import XFormPrim
+    if hasattr(XFormPrim, 'get_world_poses'):
+        _original_xform_prim_get_world_poses = XFormPrim.get_world_poses
+        def _patched_xform_prim_get_world_poses(self, *args, **kwargs):
+            kwargs.pop('usd', None)  # Remove 'usd' parameter if present
+            return _original_xform_prim_get_world_poses(self, *args, **kwargs)
+        XFormPrim.get_world_poses = _patched_xform_prim_get_world_poses
+        print(f"[OmniDrones] Applied patch to {XFormPrim.__module__}.{XFormPrim.__name__}")
+except ImportError:
+    print("[OmniDrones] isaacsim.core.prims.impl.xform_prim.XFormPrim not available for patching")
+except Exception as e:
+    print(f"[OmniDrones] Failed to patch XFormPrim: {e}")
 
 
 def require_sim_initialized(func):
