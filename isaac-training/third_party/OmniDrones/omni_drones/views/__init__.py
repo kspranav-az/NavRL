@@ -51,8 +51,16 @@ def require_sim_initialized(func):
 
     @functools.wraps(func)
     def _func(*args, **kwargs):
-        if SimulationContext.instance()._physics_sim_view is None:
-            raise RuntimeError("SimulationContext not initialzed.")
+        # Check if simulation context is ready with proper fallback
+        try:
+            from isaacsim.core.simulation_manager import SimulationManager
+            physics_sim_view = SimulationManager.get_physics_sim_view()
+            if physics_sim_view is None:
+                raise RuntimeError("SimulationContext not initialized.")
+        except ImportError:
+            # Fallback for older versions
+            if not hasattr(SimulationContext.instance(), '_physics_sim_view') or SimulationContext.instance()._physics_sim_view is None:
+                raise RuntimeError("SimulationContext not initialized.")
         return func(*args, **kwargs)
     
     return _func

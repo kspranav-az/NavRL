@@ -268,7 +268,16 @@ class IsaacEnv(EnvBase):
         env_ids = env_mask.nonzero().squeeze(-1)
         self._reset_idx(env_ids)
         # self.sim.step(render=False)
-        self.sim._physics_sim_view.flush()
+        # Flush physics simulation view using the modern API
+        try:
+            from isaacsim.core.simulation_manager import SimulationManager
+            physics_sim_view = SimulationManager.get_physics_sim_view()
+            if physics_sim_view is not None:
+                physics_sim_view.flush()
+        except ImportError:
+            # Fallback for older versions
+            if hasattr(self.sim, '_physics_sim_view') and self.sim._physics_sim_view is not None:
+                self.sim._physics_sim_view.flush()
         self.progress_buf[env_ids] = 0.
         tensordict = TensorDict({}, self.batch_size, device=self.device)
         tensordict.update(self._compute_state_and_obs())
