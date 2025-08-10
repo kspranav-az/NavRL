@@ -51,20 +51,29 @@ def test_training_script_imports():
                     print("[MockEnv] Hover assistance disabled via environment variable")
                 
                 # Additional safety: disable if tensor shapes are unexpected
-                if hover_enabled and actions.shape[-1] != 3:
+                # Support both 3D (x,y,z) and 4D (x,y,z,yaw) actions
+                if hover_enabled and actions.shape[-1] not in [3, 4]:
                     print(f"[Warning] Unexpected action shape {actions.shape}, disabling hover assistance")
                     hover_enabled = False
                 
                 if hover_enabled:
                     try:
                         # This helps during early training when policy outputs near-zero actions
-                        action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
+                        # For 4D actions, only compute magnitude on x,y,z components (not yaw)
+                        if actions.shape[-1] == 4:
+                            action_magnitude = torch.linalg.norm(actions[..., :3], dim=-1, keepdim=True)
+                        else:
+                            action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
                         is_small_action = action_magnitude < 0.15  # Threshold for "weak" velocity commands
                         
                         # Create hover assistance (small upward velocity + slight forward motion)
                         hover_assist = torch.zeros_like(actions)
                         hover_assist[..., 2] = 0.3  # Small upward velocity to counteract gravity
                         hover_assist[..., 0] = 0.1  # Tiny forward velocity for stability
+                        
+                        # For 4D actions, don't assist yaw (rotation) - only assist position (x,y,z)
+                        if actions.shape[-1] == 4:
+                            hover_assist[..., 3] = 0.0  # No yaw assistance
                         
                         # Simplified tensor broadcasting - just reshape to match actions
                         if is_small_action.shape != actions.shape:
@@ -119,9 +128,9 @@ def test_training_script_imports():
         print("   🔄 Testing hover assistance logic...")
         mock_env = MockNavigationEnv()
         
-        # Create test tensordict
+        # Create test tensordict with 4D actions (matching the actual training scenario)
         test_tensordict = {
-            ("agents", "action"): torch.randn(9, 1, 3) * 0.1  # Small actions
+            ("agents", "action"): torch.randn(9, 1, 4) * 0.1  # Small 4D actions (x,y,z,yaw)
         }
         
         # Test the method
@@ -151,16 +160,16 @@ def test_tensor_operations():
         actions = torch.randn(9, 1, 4)  # [9, 1, 4] as in the error
         print(f"   Actions shape: {actions.shape}")
         
-        # This should work without errors
-        action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
-        print(f"   Magnitude shape: {action_magnitude.shape}")
+        # For 4D actions, only compute magnitude on x,y,z components (not yaw)
+        action_magnitude = torch.linalg.norm(actions[..., :3], dim=-1, keepdim=True)
+        print(f"   Magnitude shape (x,y,z only): {action_magnitude.shape}")
         
         # Test the comparison
         is_small_action = action_magnitude < 0.15
         print(f"   Small action mask shape: {is_small_action.shape}")
         print(f"   Small actions count: {is_small_action.sum().item()}")
         
-        print("   ✅ Action magnitude computation works")
+        print("   ✅ Action magnitude computation works for 4D actions")
         
         # Test 2: Tensor reshaping for different dimensions
         print("\n2️⃣ Testing tensor reshaping...")

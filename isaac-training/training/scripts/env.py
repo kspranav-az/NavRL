@@ -584,7 +584,8 @@ class NavigationEnv(IsaacEnv):
             print("[NavigationEnv] Hover assistance disabled via environment variable")
         
         # Additional safety: disable if tensor shapes are unexpected
-        if hover_enabled and actions.shape[-1] != 3:
+        # Support both 3D (x,y,z) and 4D (x,y,z,yaw) actions
+        if hover_enabled and actions.shape[-1] not in [3, 4]:
             print(f"[Warning] Unexpected action shape {actions.shape}, disabling hover assistance")
             hover_enabled = False
         
@@ -598,6 +599,10 @@ class NavigationEnv(IsaacEnv):
                 hover_assist = torch.zeros_like(actions)
                 hover_assist[..., 2] = 0.3  # Small upward velocity to counteract gravity
                 hover_assist[..., 0] = 0.1  # Tiny forward velocity for stability
+                
+                # For 4D actions, don't assist yaw (rotation) - only assist position (x,y,z)
+                if actions.shape[-1] == 4:
+                    hover_assist[..., 3] = 0.0  # No yaw assistance
                 
                 # Apply hover assistance only when policy outputs are too small
                 # This ensures trained policies aren't affected, only helps untrained ones
