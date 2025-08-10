@@ -1,6 +1,7 @@
 import torch
 import einops
 import numpy as np
+import os
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torchrl.data import UnboundedContinuousTensorSpec, CompositeSpec, DiscreteTensorSpec
 import time
@@ -582,6 +583,11 @@ class NavigationEnv(IsaacEnv):
             hover_enabled = False
             print("[NavigationEnv] Hover assistance disabled via environment variable")
         
+        # Additional safety: disable if tensor shapes are unexpected
+        if hover_enabled and actions.shape[-1] != 3:
+            print(f"[Warning] Unexpected action shape {actions.shape}, disabling hover assistance")
+            hover_enabled = False
+        
         if hover_enabled:
             try:
                 # This helps during early training when policy outputs near-zero actions
@@ -596,50 +602,47 @@ class NavigationEnv(IsaacEnv):
                 # Apply hover assistance only when policy outputs are too small
                 # This ensures trained policies aren't affected, only helps untrained ones
                 
-                # More robust tensor broadcasting approach
-                if is_small_action.dim() == 4:  # [9, 1, 1, 1]
-                    # Reshape to match actions [9, 1, 4]
-                    is_small_action_reshaped = is_small_action.squeeze(-1).squeeze(-1)  # [9, 1]
-                    is_small_action_expanded = is_small_action_reshaped.unsqueeze(-1).expand_as(actions)
-                elif is_small_action.dim() == 3:  # [9, 1, 1]
-                    is_small_action_expanded = is_small_action.expand_as(actions)
-                else:
-                    # Fallback: use broadcasting
-                    is_small_action_expanded = is_small_action.expand_as(actions)
+                # Simplified tensor broadcasting - just reshape to match actions
+                if is_small_action.shape != actions.shape:
+                    # Reshape is_small_action to match actions shape
+                    if is_small_action.dim() == 4:  # [9, 1, 1, 1]
+                        is_small_action = is_small_action.squeeze(-1).squeeze(-1)  # [9, 1]
+                    elif is_small_action.dim() == 3:  # [9, 1, 1]
+                        is_small_action = is_small_action.squeeze(-1)  # [9, 1]
+                    
+                    # Now expand to match actions
+                    is_small_action = is_small_action.unsqueeze(-1).expand_as(actions)
                 
-                # Debug logging for tensor shapes (uncomment if needed)
-                # print(f"[Debug] Actions: {actions.shape}, Magnitude: {action_magnitude.shape}, Small: {is_small_action.shape}, Expanded: {is_small_action_expanded.shape}")
-                
-                # Final safety check: ensure tensor shapes are compatible
-                if is_small_action_expanded.shape != actions.shape:
-                    print(f"[Warning] Shape mismatch - Actions: {actions.shape}, Small expanded: {is_small_action_expanded.shape}")
-                    # Last resort: reshape to match
-                    is_small_action_expanded = is_small_action_expanded.view_as(actions)
-                
+                # Apply assistance where actions are small
                 assisted_actions = torch.where(
-                    is_small_action_expanded,
+                    is_small_action,
                     actions + hover_assist * 0.8,  # Scale down assistance
                     actions
                 )
+                
+                # Additional safety: ensure minimum action magnitude for stable flight
+                final_magnitude = torch.linalg.norm(assisted_actions, dim=-1, keepdim=True)
+                min_safe_magnitude = 0.05
+                safe_actions = torch.where(
+                    final_magnitude < min_safe_magnitude,
+                    assisted_actions * (min_safe_magnitude / (final_magnitude + 1e-8)),
+                    assisted_actions
+                )
+                
+                # Update tensordict with assisted actions for consistency
+                tensordict[("agents", "action")] = safe_actions
+                
+                # Optional: Log assistance activity (uncomment for debugging)
+                # if self.progress_buf[0] % 100 == 0:  # Log every 100 steps
+                #     print(f"[NavigationEnv] Hover assistance - Action mag: {action_magnitude.mean():.3f}, Assisted: {torch.linalg.norm(safe_actions, dim=-1).mean():.3f}")
+                
             except Exception as e:
                 print(f"[Warning] Hover assistance failed: {e}, using original actions")
-                assisted_actions = actions
-            
-            # Additional safety: ensure minimum action magnitude for stable flight
-            final_magnitude = torch.linalg.norm(assisted_actions, dim=-1, keepdim=True)
-            min_safe_magnitude = 0.05
-            safe_actions = torch.where(
-                final_magnitude < min_safe_magnitude,
-                assisted_actions * (min_safe_magnitude / (final_magnitude + 1e-8)),
-                assisted_actions
-            )
-            
-            # Update tensordict with assisted actions for consistency
-            tensordict[("agents", "action")] = safe_actions
-            
-            # Optional: Log assistance activity (uncomment for debugging)
-            # if self.progress_buf[0] % 100 == 0:  # Log every 100 steps
-            #     print(f"[NavigationEnv] Hover assistance - Action mag: {action_magnitude.mean():.3f}, Assisted: {torch.linalg.norm(safe_actions, dim=-1).mean():.3f}")
+                safe_actions = actions
+                # Disable hover assistance for future steps to avoid repeated errors
+                print("[NavigationEnv] Disabling hover assistance due to error")
+                if hasattr(self.cfg.env, 'hover_assistance'):
+                    self.cfg.env.hover_assistance = False
         else:
             safe_actions = actions
         

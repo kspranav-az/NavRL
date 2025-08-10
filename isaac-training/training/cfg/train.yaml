@@ -20,6 +20,8 @@ env:
   env_spacing: 10.0  # Wide spacing so you can see each drone clearly
   num_obstacles: 0   # NO obstacles - pure drone visibility
   hover_assistance: True  # Enable hover assistance for untrained policies
+  # Quick toggle: set to False to disable hover assistance
+  # Or set environment variable: DISABLE_HOVER_ASSISTANCE=true
 
 env_dyn:
   num_obstacles: 0  # Zero dynamic obstacles for maximum drone visibility
