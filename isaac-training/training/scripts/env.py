@@ -576,23 +576,54 @@ class NavigationEnv(IsaacEnv):
         actions = tensordict[("agents", "action")] 
         
         # Hover assistance for untrained policy (configurable)
-        if getattr(self.cfg.env, 'hover_assistance', True):
-            # This helps during early training when policy outputs near-zero actions
-            action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
-            is_small_action = action_magnitude < 0.15  # Threshold for "weak" velocity commands
-            
-            # Create hover assistance (small upward velocity + slight forward motion)
-            hover_assist = torch.zeros_like(actions)
-            hover_assist[..., 2] = 0.3  # Small upward velocity to counteract gravity
-            hover_assist[..., 0] = 0.1  # Tiny forward velocity for stability
-            
-            # Apply hover assistance only when policy outputs are too small
-            # This ensures trained policies aren't affected, only helps untrained ones
-            assisted_actions = torch.where(
-                is_small_action.unsqueeze(-1).expand_as(actions),
-                actions + hover_assist * 0.8,  # Scale down assistance
-                actions
-            )
+        # Can be disabled via config or environment variable for debugging
+        hover_enabled = getattr(self.cfg.env, 'hover_assistance', True)
+        if os.environ.get('DISABLE_HOVER_ASSISTANCE', 'false').lower() == 'true':
+            hover_enabled = False
+            print("[NavigationEnv] Hover assistance disabled via environment variable")
+        
+        if hover_enabled:
+            try:
+                # This helps during early training when policy outputs near-zero actions
+                action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
+                is_small_action = action_magnitude < 0.15  # Threshold for "weak" velocity commands
+                
+                # Create hover assistance (small upward velocity + slight forward motion)
+                hover_assist = torch.zeros_like(actions)
+                hover_assist[..., 2] = 0.3  # Small upward velocity to counteract gravity
+                hover_assist[..., 0] = 0.1  # Tiny forward velocity for stability
+                
+                # Apply hover assistance only when policy outputs are too small
+                # This ensures trained policies aren't affected, only helps untrained ones
+                
+                # More robust tensor broadcasting approach
+                if is_small_action.dim() == 4:  # [9, 1, 1, 1]
+                    # Reshape to match actions [9, 1, 4]
+                    is_small_action_reshaped = is_small_action.squeeze(-1).squeeze(-1)  # [9, 1]
+                    is_small_action_expanded = is_small_action_reshaped.unsqueeze(-1).expand_as(actions)
+                elif is_small_action.dim() == 3:  # [9, 1, 1]
+                    is_small_action_expanded = is_small_action.expand_as(actions)
+                else:
+                    # Fallback: use broadcasting
+                    is_small_action_expanded = is_small_action.expand_as(actions)
+                
+                # Debug logging for tensor shapes (uncomment if needed)
+                # print(f"[Debug] Actions: {actions.shape}, Magnitude: {action_magnitude.shape}, Small: {is_small_action.shape}, Expanded: {is_small_action_expanded.shape}")
+                
+                # Final safety check: ensure tensor shapes are compatible
+                if is_small_action_expanded.shape != actions.shape:
+                    print(f"[Warning] Shape mismatch - Actions: {actions.shape}, Small expanded: {is_small_action_expanded.shape}")
+                    # Last resort: reshape to match
+                    is_small_action_expanded = is_small_action_expanded.view_as(actions)
+                
+                assisted_actions = torch.where(
+                    is_small_action_expanded,
+                    actions + hover_assist * 0.8,  # Scale down assistance
+                    actions
+                )
+            except Exception as e:
+                print(f"[Warning] Hover assistance failed: {e}, using original actions")
+                assisted_actions = actions
             
             # Additional safety: ensure minimum action magnitude for stable flight
             final_magnitude = torch.linalg.norm(assisted_actions, dim=-1, keepdim=True)
