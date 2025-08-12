@@ -164,8 +164,8 @@ class NavigationEnv(IsaacEnv):
         drone_model = MultirotorBase.REGISTRY[self.cfg.drone.model_name] # drone model class
         cfg = drone_model.cfg_cls(force_sensor=False)
         self.drone = drone_model(cfg=cfg)
-        # drone_prim = self.drone.spawn(translations=[(0.0, 0.0, 1.0)])[0]
-        drone_prim = self.drone.spawn(translations=[(0.0, 0.0, 2.0)])[0]
+        # Increased spawn height to prevent drones from falling through obstacles
+        drone_prim = self.drone.spawn(translations=[(0.0, 0.0, 5.0)])[0]
 
         # Balanced lighting for clear visibility without overexposure
         print("[NavigationEnv] Setting up balanced lighting...")
@@ -188,45 +188,50 @@ class NavigationEnv(IsaacEnv):
         sky_light.spawn.func(sky_light.prim_path, sky_light.spawn)
         print("[NavigationEnv] Lighting setup complete - balanced for drone visibility")
         
-        # Ground Plane - try nucleus server first, fallback to shape-based approach
-        # Import prim_utils at the beginning for cleanup purposes
+        # Ground Plane - only create if no terrain obstacles to avoid conflicts
         from isaacsim.core.utils import prims as prim_utils
         
         ground_plane_path = "/World/defaultGroundPlane"
-        try:
-            # Try using the standard ground plane (requires nucleus server)
-            cfg_ground = sim_utils.GroundPlaneCfg(color=(0.1, 0.1, 0.1), size=(300., 300.))
-            cfg_ground.func(ground_plane_path, cfg_ground)
-            print("[NavigationEnv] Using standard ground plane from nucleus server")
-        except Exception as e:
-            print(f"[NavigationEnv] Standard ground plane failed: {e}")
-            print("[NavigationEnv] Falling back to shape-based ground plane")
-            
-            # Clean up any partial prim that may have been created
-            if prim_utils.is_prim_path_valid(ground_plane_path):
-                prim_utils.delete_prim(ground_plane_path)
-                print("[NavigationEnv] Cleaned up partial ground plane prim")
-            
-            # Fallback: Use cuboid shape instead of USD file
-            from isaaclab.sim.spawners.shapes import CuboidCfg
-            from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg
-            
-            cfg_ground = CuboidCfg(
-                size=(300.0, 300.0, 0.1),  # Large flat ground plane
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),  # Static ground
-                mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-                collision_props=sim_utils.CollisionPropertiesCfg(),
-                physics_material=RigidBodyMaterialCfg(
-                    static_friction=1.0,
-                    dynamic_friction=1.0,
-                    restitution=0.0,
-                ),
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1), metallic=0.0),
-            )
-            cfg_ground.func(ground_plane_path, cfg_ground, translation=(0, 0, -0.05))
-            print("[NavigationEnv] Successfully created shape-based ground plane")
+        
+        # Only create simple ground plane if no terrain obstacles
+        if self.cfg.env.num_obstacles == 0:
+            try:
+                # Try using the standard ground plane (requires nucleus server)
+                cfg_ground = sim_utils.GroundPlaneCfg(color=(0.2, 0.2, 0.2), size=(300., 300.))
+                cfg_ground.func(ground_plane_path, cfg_ground)
+                print("[NavigationEnv] Using standard ground plane from nucleus server")
+            except Exception as e:
+                print(f"[NavigationEnv] Standard ground plane failed: {e}")
+                print("[NavigationEnv] Falling back to shape-based ground plane")
+                
+                # Clean up any partial prim that may have been created
+                if prim_utils.is_prim_path_valid(ground_plane_path):
+                    prim_utils.delete_prim(ground_plane_path)
+                    print("[NavigationEnv] Cleaned up partial ground plane prim")
+                
+                # Fallback: Use cuboid shape instead of USD file
+                from isaaclab.sim.spawners.shapes import CuboidCfg
+                from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg
+                
+                cfg_ground = CuboidCfg(
+                    size=(300.0, 300.0, 0.1),  # Large flat ground plane
+                    rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),  # Static ground
+                    mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+                    collision_props=sim_utils.CollisionPropertiesCfg(),
+                    physics_material=RigidBodyMaterialCfg(
+                        static_friction=1.0,
+                        dynamic_friction=1.0,
+                        restitution=0.0,
+                    ),
+                    visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.2), metallic=0.0),
+                )
+                cfg_ground.func(ground_plane_path, cfg_ground, translation=(0, 0, -0.05))
+                print("[NavigationEnv] Successfully created shape-based ground plane")
+        else:
+            print("[NavigationEnv] Terrain obstacles enabled - skipping simple ground plane to avoid conflicts")
 
-        self.map_range = [20.0, 20.0, 4.5]
+        # Increased map range for better drone separation and obstacle placement
+        self.map_range = [25.0, 25.0, 6.0]
 
         terrain_cfg = TerrainImporterCfg(
             num_envs=self.num_envs,
@@ -243,7 +248,7 @@ class NavigationEnv(IsaacEnv):
                 vertical_scale=0.1,
                 slope_threshold=0.75,
                 use_cache=False,
-                color_scheme="height",
+                color_scheme="uniform",  # Changed from "height" to "uniform" to avoid yellow colors
                 sub_terrains={
                     "obstacles": HfDiscreteObstaclesTerrainCfg(
                         horizontal_scale=0.1,
@@ -252,7 +257,7 @@ class NavigationEnv(IsaacEnv):
                         num_obstacles=self.cfg.env.num_obstacles,
                         obstacle_height_mode="choice",  # Fixed: use "choice" instead of "range"
                         obstacle_width_range=(0.4, 1.1),
-                        obstacle_height_range=(1.0, 6.0),  # Fixed: use tuple instead of list
+                        obstacle_height_range=(1.0, 4.0),  # Reduced max height to prevent conflicts with drones
                         platform_width=0.0,
                         # Removed obstacle_height_probability as it doesn't exist in IsaacLab
                     ),
@@ -261,37 +266,17 @@ class NavigationEnv(IsaacEnv):
             visual_material = None,
             max_init_terrain_level=None,
             collision_group=-1,
-            debug_vis=True,  # Try with Nucleus server assets first
+            debug_vis=False,  # Disabled debug visualization to prevent yellow ground colors
         )
         
-        # Try to create terrain importer with debug visualization
+        # Try to create terrain importer without debug visualization
         try:
             terrain_importer = TerrainImporter(terrain_cfg)
-            print("[NavigationEnv] TerrainImporter created successfully with debug visualization")
-        except FileNotFoundError as e:
-            if "frame_prim.usd" in str(e):
-                print(f"[NavigationEnv] Debug visualization failed: {e}")
-                print("[NavigationEnv] Retrying with debug_vis=False...")
-                
-                # Clean up any partial terrain prims that may have been created
-                from isaacsim.core.utils import prims as prim_utils
-                terrain_prim_path = "/World/ground/terrain"
-                if prim_utils.is_prim_path_valid(terrain_prim_path):
-                    prim_utils.delete_prim(terrain_prim_path)
-                    print("[NavigationEnv] Cleaned up partial terrain prim")
-                
-                # Clean up the ground parent if it exists and is empty
-                ground_prim_path = "/World/ground"
-                if prim_utils.is_prim_path_valid(ground_prim_path):
-                    prim_utils.delete_prim(ground_prim_path)
-                    print("[NavigationEnv] Cleaned up ground prim")
-                
-                # Retry without debug visualization
-                terrain_cfg.debug_vis = False
-                terrain_importer = TerrainImporter(terrain_cfg)
-                print("[NavigationEnv] TerrainImporter created successfully without debug visualization")
-            else:
-                raise e
+            print("[NavigationEnv] TerrainImporter created successfully without debug visualization")
+        except Exception as e:
+            print(f"[NavigationEnv] Terrain creation failed: {e}")
+            print("[NavigationEnv] Continuing without terrain obstacles")
+            return
 
         if (self.cfg.env_dyn.num_obstacles == 0):
             return
@@ -331,31 +316,60 @@ class NavigationEnv(IsaacEnv):
                     return False
             return True            
         
-        obs_dist = 2 * np.sqrt(self.map_range[0] * self.map_range[1] / self.cfg.env_dyn.num_obstacles) # prefered distance between each dynamic obstacle
+        # Improved obstacle distance calculation for better distribution
+        obs_dist = 2 * np.sqrt(self.map_range[0] * self.map_range[1] / max(self.cfg.env_dyn.num_obstacles, 1))
         curr_obs_dist = obs_dist
         prev_pos_list = [] # for distance check
+        
+        # Ensure minimum distance from drone spawn areas
+        drone_spawn_radius = 3.0  # Keep obstacles away from drone spawn points
+        
         cuboid_category_num = cylinder_category_num = int(dyn_obs_category_num/N_h)
         for category_idx in range(cuboid_category_num + cylinder_category_num):
             # create all origins for 3D dynamic obstacles of this category (size)
             for origin_idx in range(self.dyn_obs_num_of_each_category):
                 # random sample an origin until satisfy the evenly distributed condition
                 start_time = time.time()
-                while (True):
+                attempts = 0
+                max_attempts = 100
+                
+                while (attempts < max_attempts):
                     ox = np.random.uniform(low=-self.map_range[0], high=self.map_range[0])
                     oy = np.random.uniform(low=-self.map_range[1], high=self.map_range[1])
+                    
+                    # Keep obstacles away from drone spawn areas
+                    if abs(ox) < drone_spawn_radius and abs(oy) < drone_spawn_radius:
+                        attempts += 1
+                        continue
+                    
                     if (category_idx < cuboid_category_num):
-                        oz = np.random.uniform(low=0.0, high=self.map_range[2]) 
+                        oz = np.random.uniform(low=0.5, high=self.map_range[2] - 1.0)  # Keep away from ground and ceiling
                     else:
                         oz = self.max_obs_2d_height/2. # half of the height
+                    
                     curr_pos = np.array([ox, oy])
                     valid = check_pos_validity(prev_pos_list, curr_pos, curr_obs_dist)
+                    
+                    if (valid):
+                        prev_pos_list.append(curr_pos)
+                        break
+                    
+                    attempts += 1
                     curr_time = time.time()
                     if (curr_time - start_time > 0.1):
                         curr_obs_dist *= 0.8
                         start_time = time.time()
-                    if (valid):
-                        prev_pos_list.append(curr_pos)
-                        break
+                
+                if attempts >= max_attempts:
+                    print(f"[NavigationEnv] Warning: Could not place obstacle {origin_idx+category_idx*self.dyn_obs_num_of_each_category} after {max_attempts} attempts")
+                    # Place at a safe distance
+                    ox = np.random.uniform(low=-self.map_range[0] + 5, high=self.map_range[0] - 5)
+                    oy = np.random.uniform(low=-self.map_range[1] + 5, high=self.map_range[1] - 5)
+                    if (category_idx < cuboid_category_num):
+                        oz = np.random.uniform(low=0.5, high=self.map_range[2] - 1.0)
+                    else:
+                        oz = self.max_obs_2d_height/2.
+                
                 curr_obs_dist = obs_dist
                 origin = [ox, oy, oz]
                 self.dyn_obs_origin[origin_idx+category_idx*self.dyn_obs_num_of_each_category] = torch.tensor(origin, dtype=torch.float, device=self.cfg.device)     
@@ -510,10 +524,9 @@ class NavigationEnv(IsaacEnv):
             selected_masks = masks[mask_indices].unsqueeze(1)
             selected_shifts = shifts[mask_indices].unsqueeze(1)
 
-
-            # generate random positions
+            # generate random positions with improved height range
             target_pos = 48. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-24.)
-            heights = 0.5 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (2.5 - 0.5)
+            heights = 2.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (4.0 - 2.0)  # Increased height range
             target_pos[:, 0, 2] = heights# height
             target_pos = target_pos * selected_masks + selected_shifts
             
@@ -539,9 +552,9 @@ class NavigationEnv(IsaacEnv):
             selected_masks = masks[mask_indices].unsqueeze(1)
             selected_shifts = shifts[mask_indices].unsqueeze(1)
 
-            # generate random positions
+            # generate random positions with improved height range
             pos = 48. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-24.)
-            heights = 0.5 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (2.5 - 0.5)
+            heights = 3.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (5.0 - 3.0)  # Increased spawn height range
             pos[:, 0, 2] = heights# height
             pos = pos * selected_masks + selected_shifts
             
@@ -592,7 +605,11 @@ class NavigationEnv(IsaacEnv):
         if hover_enabled:
             try:
                 # This helps during early training when policy outputs near-zero actions
-                action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
+                # For 4D actions, only compute magnitude on x,y,z components (not yaw)
+                if actions.shape[-1] == 4:
+                    action_magnitude = torch.linalg.norm(actions[..., :3], dim=-1, keepdim=True)
+                else:
+                    action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
                 is_small_action = action_magnitude < 0.15  # Threshold for "weak" velocity commands
                 
                 # Create hover assistance (small upward velocity + slight forward motion)
@@ -626,7 +643,12 @@ class NavigationEnv(IsaacEnv):
                 )
                 
                 # Additional safety: ensure minimum action magnitude for stable flight
-                final_magnitude = torch.linalg.norm(assisted_actions, dim=-1, keepdim=True)
+                # For 4D actions, only check magnitude on x,y,z components
+                if actions.shape[-1] == 4:
+                    final_magnitude = torch.linalg.norm(assisted_actions[..., :3], dim=-1, keepdim=True)
+                else:
+                    final_magnitude = torch.linalg.norm(assisted_actions, dim=-1, keepdim=True)
+                
                 min_safe_magnitude = 0.05
                 safe_actions = torch.where(
                     final_magnitude < min_safe_magnitude,

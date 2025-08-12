@@ -15,16 +15,16 @@ save_interval: 1000
 
 # Training Environment
 env:
-  num_envs: 10 # Start with 9 environments (3x3 grid = easy to see all drones)
+  num_envs: 9 # Reduced to 9 environments (3x3 grid) for better obstacle management
   max_episode_length: 2200
-  env_spacing: 10.0  # Wide spacing so you can see each drone clearly
-  num_obstacles: 10   # NO obstacles - pure drone visibility
+  env_spacing: 15.0  # Increased spacing for better drone separation and obstacle placement
+  num_obstacles: 8   # Reduced obstacles for better drone visibility and training
   hover_assistance: True  # Enable hover assistance for untrained policies
   # Quick toggle: set to False to disable hover assistance
   # Or set environment variable: DISABLE_HOVER_ASSISTANCE=true
 
 env_dyn:
-  num_obstacles: 10  # Zero dynamic obstacles for maximum drone visibility
+  num_obstacles: 5  # Reduced dynamic obstacles for better training stability
   vel_range: [0.5, 1.5]
   local_range: [5.0, 5.0, 4.5]
 
