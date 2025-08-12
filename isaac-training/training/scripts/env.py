@@ -138,11 +138,29 @@ class NavigationEnv(IsaacEnv):
                 vertical_ray_angles=torch.linspace(*self.lidar_vfov, self.lidar_vbeams) 
             ),
             debug_vis=False,
-            mesh_prim_paths=["/World/ground"],
-            # mesh_prim_paths=["/World"],
+            mesh_prim_paths=["/World"],  # Use the entire world for collision detection
+            # mesh_prim_paths=["/World/ground"],
         )
         self.lidar = RayCaster(ray_caster_cfg)
-        self.lidar._initialize_impl()
+        
+        # Initialize LiDAR with error handling
+        try:
+            self.lidar._initialize_impl()
+            print("[NavigationEnv] LiDAR initialized successfully")
+        except Exception as e:
+            print(f"[NavigationEnv] LiDAR initialization failed: {e}")
+            print("[NavigationEnv] Attempting to initialize with minimal mesh paths...")
+            try:
+                # Try with minimal mesh paths
+                ray_caster_cfg.mesh_prim_paths = ["/World/envs"]
+                self.lidar = RayCaster(ray_caster_cfg)
+                self.lidar._initialize_impl()
+                print("[NavigationEnv] LiDAR initialized with minimal mesh paths")
+            except Exception as e2:
+                print(f"[NavigationEnv] LiDAR initialization completely failed: {e2}")
+                print("[NavigationEnv] Continuing without LiDAR - this may affect training performance")
+                self.lidar = None
+        
         self.lidar_resolution = (self.lidar_hbeams, self.lidar_vbeams) 
         
         # start and target 
@@ -191,7 +209,7 @@ class NavigationEnv(IsaacEnv):
         # Ground Plane - only create if no terrain obstacles to avoid conflicts
         from isaacsim.core.utils import prims as prim_utils
         
-        ground_plane_path = "/World/defaultGroundPlane"
+        ground_plane_path = "/World/ground"
         
         # Only create simple ground plane if no terrain obstacles
         if self.cfg.env.num_obstacles == 0:
@@ -229,6 +247,15 @@ class NavigationEnv(IsaacEnv):
                 print("[NavigationEnv] Successfully created shape-based ground plane")
         else:
             print("[NavigationEnv] Terrain obstacles enabled - skipping simple ground plane to avoid conflicts")
+            # Ensure the ground path exists for LiDAR reference
+            if not prim_utils.is_prim_path_valid(ground_plane_path):
+                try:
+                    # Create a minimal ground reference for LiDAR
+                    cfg_ground = sim_utils.GroundPlaneCfg(color=(0.2, 0.2, 0.2), size=(300., 300.))
+                    cfg_ground.func(ground_plane_path, cfg_ground)
+                    print("[NavigationEnv] Created minimal ground reference for LiDAR")
+                except Exception as e:
+                    print(f"[NavigationEnv] Failed to create ground reference: {e}")
 
         # Increased map range for better drone separation and obstacle placement
         self.map_range = [25.0, 25.0, 6.0]
@@ -248,7 +275,7 @@ class NavigationEnv(IsaacEnv):
                 vertical_scale=0.1,
                 slope_threshold=0.75,
                 use_cache=False,
-                color_scheme="uniform",  # Changed from "height" to "uniform" to avoid yellow colors
+                color_scheme="height",  # Changed back to "height" as "uniform" is not valid
                 sub_terrains={
                     "obstacles": HfDiscreteObstaclesTerrainCfg(
                         horizontal_scale=0.1,
@@ -276,6 +303,13 @@ class NavigationEnv(IsaacEnv):
         except Exception as e:
             print(f"[NavigationEnv] Terrain creation failed: {e}")
             print("[NavigationEnv] Continuing without terrain obstacles")
+            # Create a simple ground plane as fallback when terrain fails
+            try:
+                cfg_ground = sim_utils.GroundPlaneCfg(color=(0.2, 0.2, 0.2), size=(300., 300.))
+                cfg_ground.func("/World/ground", cfg_ground)
+                print("[NavigationEnv] Created fallback ground plane after terrain failure")
+            except Exception as ground_e:
+                print(f"[NavigationEnv] Fallback ground plane also failed: {ground_e}")
             return
 
         if (self.cfg.env_dyn.num_obstacles == 0):
@@ -679,7 +713,8 @@ class NavigationEnv(IsaacEnv):
     def _post_sim_step(self, tensordict: TensorDictBase):
         if (self.cfg.env_dyn.num_obstacles != 0):
             self.move_dynamic_obstacle()
-        self.lidar.update(self.dt)
+        if self.lidar is not None:
+            self.lidar.update(self.dt)
     
     # get current states/observation
     def _compute_state_and_obs(self):
@@ -688,25 +723,30 @@ class NavigationEnv(IsaacEnv):
 
         # >>>>>>>>>>>>The relevant code starts from here<<<<<<<<<<<<
         # -----------Network Input I: LiDAR range data--------------
-        self.lidar_scan = self.lidar_range - (
-            (self.lidar.data.ray_hits_w - self.lidar.data.pos_w.unsqueeze(1))
-            .norm(dim=-1)
-            .clamp_max(self.lidar_range)
-            .reshape(self.num_envs, 1, *self.lidar_resolution)
-        ) # lidar scan store the data that is range - distance and it is in lidar's local frame
+        if self.lidar is not None:
+            self.lidar_scan = self.lidar_range - (
+                (self.lidar.data.ray_hits_w - self.lidar.data.pos_w.unsqueeze(1))
+                .norm(dim=-1)
+                .clamp_max(self.lidar_range)
+                .reshape(self.num_envs, 1, *self.lidar_resolution)
+            ) # lidar scan store the data that is range - distance and it is in lidar's local frame
 
-        # Optional render for LiDAR
-        if self._should_render(0):
-            self.debug_draw.clear()
-            x = self.lidar.data.pos_w[0]
-            # set_camera_view(
-            #     eye=x.cpu() + torch.as_tensor(self.cfg.viewer.eye),
-            #     target=x.cpu() + torch.as_tensor(self.cfg.viewer.lookat)                        
-            # )
-            v = (self.lidar.data.ray_hits_w[0] - x).reshape(*self.lidar_resolution, 3)
-            # self.debug_draw.vector(x.expand_as(v[:, 0]), v[:, 0])
-            # self.debug_draw.vector(x.expand_as(v[:, -1]), v[:, -1])
-            self.debug_draw.vector(x.expand_as(v[:, 0])[0], v[0, 0])
+            # Optional render for LiDAR
+            if self._should_render(0):
+                self.debug_draw.clear()
+                x = self.lidar.data.pos_w[0]
+                # set_camera_view(
+                #     eye=x.cpu() + torch.as_tensor(self.cfg.viewer.eye),
+                #     target=x.cpu() + torch.as_tensor(self.cfg.viewer.lookat)                        
+                # )
+                v = (self.lidar.data.ray_hits_w[0] - x).reshape(*self.lidar_resolution, 3)
+                # self.debug_draw.vector(x.expand_as(v[:, 0]), v[:, 0])
+                # self.debug_draw.vector(x.expand_as(v[:, -1]), v[:, -1])
+                self.debug_draw.vector(x.expand_as(v[:, 0])[0], v[0, 0])
+        else:
+            # Fallback: Create dummy LiDAR data when LiDAR is not available
+            self.lidar_scan = torch.ones(self.num_envs, 1, *self.lidar_resolution, device=self.device) * self.lidar_range
+            print("[NavigationEnv] Using dummy LiDAR data - LiDAR not available")
 
         # ---------Network Input II: Drone's internal states---------
         # a. distance info in horizontal and vertical plane
