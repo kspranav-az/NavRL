@@ -408,44 +408,71 @@ class NavigationEnv(IsaacEnv):
                 origin = [ox, oy, oz]
                 self.dyn_obs_origin[origin_idx+category_idx*self.dyn_obs_num_of_each_category] = torch.tensor(origin, dtype=torch.float, device=self.cfg.device)     
                 self.dyn_obs_state[origin_idx+category_idx*self.dyn_obs_num_of_each_category, :3] = torch.tensor(origin, dtype=torch.float, device=self.cfg.device)                        
-                prim_utils.create_prim(f"/World/Origin{origin_idx+category_idx*self.dyn_obs_num_of_each_category}", "Xform", translation=origin)
+                # Removed the old prim_utils.create_prim call - obstacles are now created directly in the spawn loop below
 
             # Spawn various sizes of dynamic obstacles 
             if (category_idx < cuboid_category_num):
                 # spawn for 3D dynamic obstacles
                 obs_width = width = float(category_idx+1) * max_obs_width/float(N_w)
                 obs_height = self.max_obs_3d_height
-                cuboid_cfg = RigidObjectCfg(
-                    prim_path=f"/World/Origin{construct_input(category_idx*self.dyn_obs_num_of_each_category, (category_idx+1)*self.dyn_obs_num_of_each_category)}/Cuboid",
-                    spawn=sim_utils.CuboidCfg(
-                        size=[width, width, self.max_obs_3d_height],
-                        rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-                        mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-                        collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
-                        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
-                    ),
-                    init_state=RigidObjectCfg.InitialStateCfg(),
-                )
-                dynamic_obstacle = RigidObject(cfg=cuboid_cfg)
+                
+                # Create proper prim path for each obstacle
+                obstacle_idx = category_idx * self.dyn_obs_num_of_each_category
+                for i in range(self.dyn_obs_num_of_each_category):
+                    obstacle_path = f"/World/DynamicObstacle_{obstacle_idx + i}"
+                    # Get the origin position for this specific obstacle
+                    origin_idx = i
+                    origin_pos = self.dyn_obs_origin[obstacle_idx + origin_idx].cpu().numpy()
+                    
+                    cuboid_cfg = RigidObjectCfg(
+                        prim_path=f"{obstacle_path}/Cuboid",
+                        spawn=sim_utils.CuboidCfg(
+                            size=[width, width, self.max_obs_3d_height],
+                            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+                            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+                            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+                            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
+                        ),
+                        init_state=RigidObjectCfg.InitialStateCfg(
+                            pos=origin_pos,
+                            rot=[1.0, 0.0, 0.0, 0.0]  # Identity quaternion
+                        ),
+                    )
+                    dynamic_obstacle = RigidObject(cfg=cuboid_cfg)
+                    self.dyn_obs_list.append(dynamic_obstacle)
             else:
                 radius = float(category_idx-cuboid_category_num+1) * max_obs_width/float(N_w) / 2.
                 obs_width = radius * 2
                 obs_height = self.max_obs_2d_height
-                # spawn for 2D dynamic obstacles
-                cylinder_cfg = RigidObjectCfg(
-                    prim_path=f"/World/Origin{construct_input(category_idx*self.dyn_obs_num_of_each_category, (category_idx+1)*self.dyn_obs_num_of_each_category)}/Cylinder",
-                    spawn=sim_utils.CylinderCfg(
-                        radius = radius,
-                        height = self.max_obs_2d_height, 
-                        rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-                        mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-                        collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
-                        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
-                    ),
-                    init_state=RigidObjectCfg.InitialStateCfg(),
-                )
-                dynamic_obstacle = RigidObject(cfg=cylinder_cfg)
-            self.dyn_obs_list.append(dynamic_obstacle)
+                
+                # Create proper prim path for each obstacle
+                obstacle_idx = category_idx * self.dyn_obs_num_of_each_category
+                for i in range(self.dyn_obs_num_of_each_category):
+                    obstacle_path = f"/World/DynamicObstacle_{obstacle_idx + i}"
+                    # Get the origin position for this specific obstacle
+                    origin_idx = i
+                    origin_pos = self.dyn_obs_origin[obstacle_idx + origin_idx].cpu().numpy()
+                    
+                    # spawn for 2D dynamic obstacles
+                    cylinder_cfg = RigidObjectCfg(
+                        prim_path=f"{obstacle_path}/Cylinder",
+                        spawn=sim_utils.CylinderCfg(
+                            radius = radius,
+                            height = self.max_obs_2d_height, 
+                            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+                            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+                            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+                            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
+                        ),
+                        init_state=RigidObjectCfg.InitialStateCfg(
+                            pos=origin_pos,
+                            rot=[1.0, 0.0, 0.0, 0.0]  # Identity quaternion
+                        ),
+                    )
+                    dynamic_obstacle = RigidObject(cfg=cylinder_cfg)
+                    self.dyn_obs_list.append(dynamic_obstacle)
+            
+            # Store size information for all obstacles in this category
             self.dyn_obs_size[category_idx*self.dyn_obs_num_of_each_category:(category_idx+1)*self.dyn_obs_num_of_each_category] \
                 = torch.tensor([obs_width, obs_width, obs_height], dtype=torch.float, device=self.cfg.device)
 
