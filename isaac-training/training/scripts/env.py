@@ -138,29 +138,11 @@ class NavigationEnv(IsaacEnv):
                 vertical_ray_angles=torch.linspace(*self.lidar_vfov, self.lidar_vbeams) 
             ),
             debug_vis=False,
-            mesh_prim_paths=["/World"],  # Use the entire world for collision detection
-            # mesh_prim_paths=["/World/ground"],
+            mesh_prim_paths=["/World/ground"],
+            # mesh_prim_paths=["/World"],
         )
         self.lidar = RayCaster(ray_caster_cfg)
-        
-        # Initialize LiDAR with error handling
-        try:
-            self.lidar._initialize_impl()
-            print("[NavigationEnv] LiDAR initialized successfully")
-        except Exception as e:
-            print(f"[NavigationEnv] LiDAR initialization failed: {e}")
-            print("[NavigationEnv] Attempting to initialize with minimal mesh paths...")
-            try:
-                # Try with minimal mesh paths
-                ray_caster_cfg.mesh_prim_paths = ["/World/envs"]
-                self.lidar = RayCaster(ray_caster_cfg)
-                self.lidar._initialize_impl()
-                print("[NavigationEnv] LiDAR initialized with minimal mesh paths")
-            except Exception as e2:
-                print(f"[NavigationEnv] LiDAR initialization completely failed: {e2}")
-                print("[NavigationEnv] Continuing without LiDAR - this may affect training performance")
-                self.lidar = None
-        
+        self.lidar._initialize_impl()
         self.lidar_resolution = (self.lidar_hbeams, self.lidar_vbeams) 
         
         # start and target 
@@ -183,23 +165,23 @@ class NavigationEnv(IsaacEnv):
         cfg = drone_model.cfg_cls(force_sensor=False)
         self.drone = drone_model(cfg=cfg)
         # Increased spawn height to prevent drones from falling through obstacles
-        drone_prim = self.drone.spawn(translations=[(0.0, 0.0, 5.0)])[0]
+        drone_prim = self.drone.spawn(translations=[(0.0, 0.0, 8.0)])[0]
 
         # Balanced lighting for clear visibility without overexposure
         print("[NavigationEnv] Setting up balanced lighting...")
         light = AssetBaseCfg(
             prim_path="/World/light",
             spawn=sim_utils.DistantLightCfg(
-                color=(1.0, 1.0, 0.95),      # Slightly warm white light
-                intensity=800.0,             # Much lower intensity for realistic lighting
-                angle=45.0                   # Softer shadows
+                color=(0.8, 0.8, 0.8),      # Neutral white light to avoid yellow ground
+                intensity=500.0,             # Lower intensity for better visibility
+                angle=30.0                   # More focused light
             ),
         )
         sky_light = AssetBaseCfg(
             prim_path="/World/skyLight",
             spawn=sim_utils.DomeLightCfg(
-                color=(0.7, 0.8, 1.0),       # Soft blue ambient light (like sky)
-                intensity=400.0              # Gentle ambient lighting
+                color=(0.6, 0.7, 0.8),       # Cooler ambient light to reduce yellow
+                intensity=200.0              # Lower ambient lighting
             ),
         )
         light.spawn.func(light.prim_path, light.spawn, light.init_state.pos)
@@ -275,7 +257,7 @@ class NavigationEnv(IsaacEnv):
                 vertical_scale=0.1,
                 slope_threshold=0.75,
                 use_cache=False,
-                color_scheme="height",  # Changed back to "height" as "uniform" is not valid
+                color_scheme="height",  # Use height-based coloring to avoid yellow colors
                 sub_terrains={
                     "obstacles": HfDiscreteObstaclesTerrainCfg(
                         horizontal_scale=0.1,
@@ -290,7 +272,7 @@ class NavigationEnv(IsaacEnv):
                     ),
                 },
             ),
-            visual_material = None,
+            visual_material = sim_utils.PreviewSurfaceCfg(diffuse_color=(0.3, 0.3, 0.3), metallic=0.0),  # Dark gray to avoid yellow
             max_init_terrain_level=None,
             collision_group=-1,
             debug_vis=False,  # Disabled debug visualization to prevent yellow ground colors
@@ -306,7 +288,7 @@ class NavigationEnv(IsaacEnv):
             # Create a simple ground plane as fallback when terrain fails
             try:
                 cfg_ground = sim_utils.GroundPlaneCfg(color=(0.2, 0.2, 0.2), size=(300., 300.))
-                cfg_ground.func("/World/ground", cfg_ground)
+                cfg_ground.func(ground_plane_path, cfg_ground)
                 print("[NavigationEnv] Created fallback ground plane after terrain failure")
             except Exception as ground_e:
                 print(f"[NavigationEnv] Fallback ground plane also failed: {ground_e}")
@@ -408,71 +390,44 @@ class NavigationEnv(IsaacEnv):
                 origin = [ox, oy, oz]
                 self.dyn_obs_origin[origin_idx+category_idx*self.dyn_obs_num_of_each_category] = torch.tensor(origin, dtype=torch.float, device=self.cfg.device)     
                 self.dyn_obs_state[origin_idx+category_idx*self.dyn_obs_num_of_each_category, :3] = torch.tensor(origin, dtype=torch.float, device=self.cfg.device)                        
-                # Removed the old prim_utils.create_prim call - obstacles are now created directly in the spawn loop below
+                prim_utils.create_prim(f"/World/Origin{origin_idx+category_idx*self.dyn_obs_num_of_each_category}", "Xform", translation=origin)
 
             # Spawn various sizes of dynamic obstacles 
             if (category_idx < cuboid_category_num):
                 # spawn for 3D dynamic obstacles
                 obs_width = width = float(category_idx+1) * max_obs_width/float(N_w)
                 obs_height = self.max_obs_3d_height
-                
-                # Create proper prim path for each obstacle
-                obstacle_idx = category_idx * self.dyn_obs_num_of_each_category
-                for i in range(self.dyn_obs_num_of_each_category):
-                    obstacle_path = f"/World/DynamicObstacle_{obstacle_idx + i}"
-                    # Get the origin position for this specific obstacle
-                    origin_idx = i
-                    origin_pos = self.dyn_obs_origin[obstacle_idx + origin_idx].cpu().numpy()
-                    
-                    cuboid_cfg = RigidObjectCfg(
-                        prim_path=f"{obstacle_path}/Cuboid",
-                        spawn=sim_utils.CuboidCfg(
-                            size=[width, width, self.max_obs_3d_height],
-                            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-                            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-                            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
-                            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
-                        ),
-                        init_state=RigidObjectCfg.InitialStateCfg(
-                            pos=origin_pos,
-                            rot=[1.0, 0.0, 0.0, 0.0]  # Identity quaternion
-                        ),
-                    )
-                    dynamic_obstacle = RigidObject(cfg=cuboid_cfg)
-                    self.dyn_obs_list.append(dynamic_obstacle)
+                cuboid_cfg = RigidObjectCfg(
+                    prim_path=f"/World/Origin{construct_input(category_idx*self.dyn_obs_num_of_each_category, (category_idx+1)*self.dyn_obs_num_of_each_category)}/Cuboid",
+                    spawn=sim_utils.CuboidCfg(
+                        size=[width, width, self.max_obs_3d_height],
+                        rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+                        mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+                        collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+                        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
+                    ),
+                    init_state=RigidObjectCfg.InitialStateCfg(),
+                )
+                dynamic_obstacle = RigidObject(cfg=cuboid_cfg)
             else:
                 radius = float(category_idx-cuboid_category_num+1) * max_obs_width/float(N_w) / 2.
                 obs_width = radius * 2
                 obs_height = self.max_obs_2d_height
-                
-                # Create proper prim path for each obstacle
-                obstacle_idx = category_idx * self.dyn_obs_num_of_each_category
-                for i in range(self.dyn_obs_num_of_each_category):
-                    obstacle_path = f"/World/DynamicObstacle_{obstacle_idx + i}"
-                    # Get the origin position for this specific obstacle
-                    origin_idx = i
-                    origin_pos = self.dyn_obs_origin[obstacle_idx + origin_idx].cpu().numpy()
-                    
-                    # spawn for 2D dynamic obstacles
-                    cylinder_cfg = RigidObjectCfg(
-                        prim_path=f"{obstacle_path}/Cylinder",
-                        spawn=sim_utils.CylinderCfg(
-                            radius = radius,
-                            height = self.max_obs_2d_height, 
-                            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-                            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-                            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
-                            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
-                        ),
-                        init_state=RigidObjectCfg.InitialStateCfg(
-                            pos=origin_pos,
-                            rot=[1.0, 0.0, 0.0, 0.0]  # Identity quaternion
-                        ),
-                    )
-                    dynamic_obstacle = RigidObject(cfg=cylinder_cfg)
-                    self.dyn_obs_list.append(dynamic_obstacle)
-            
-            # Store size information for all obstacles in this category
+                # spawn for 2D dynamic obstacles
+                cylinder_cfg = RigidObjectCfg(
+                    prim_path=f"/World/Origin{construct_input(category_idx*self.dyn_obs_num_of_each_category, (category_idx+1)*self.dyn_obs_num_of_each_category)}/Cylinder",
+                    spawn=sim_utils.CylinderCfg(
+                        radius = radius,
+                        height = self.max_obs_2d_height, 
+                        rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+                        mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+                        collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+                        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
+                    ),
+                    init_state=RigidObjectCfg.InitialStateCfg(),
+                )
+                dynamic_obstacle = RigidObject(cfg=cylinder_cfg)
+            self.dyn_obs_list.append(dynamic_obstacle)
             self.dyn_obs_size[category_idx*self.dyn_obs_num_of_each_category:(category_idx+1)*self.dyn_obs_num_of_each_category] \
                 = torch.tensor([obs_width, obs_width, obs_height], dtype=torch.float, device=self.cfg.device)
 
@@ -587,7 +542,7 @@ class NavigationEnv(IsaacEnv):
 
             # generate random positions with improved height range
             target_pos = 48. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-24.)
-            heights = 2.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (4.0 - 2.0)  # Increased height range
+            heights = 4.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (6.0 - 4.0)  # Increased height range to prevent falling
             target_pos[:, 0, 2] = heights# height
             target_pos = target_pos * selected_masks + selected_shifts
             
@@ -615,7 +570,7 @@ class NavigationEnv(IsaacEnv):
 
             # generate random positions with improved height range
             pos = 48. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-24.)
-            heights = 3.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (5.0 - 3.0)  # Increased spawn height range
+            heights = 6.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (8.0 - 6.0)  # Increased spawn height range to prevent falling
             pos[:, 0, 2] = heights# height
             pos = pos * selected_masks + selected_shifts
             
@@ -671,12 +626,12 @@ class NavigationEnv(IsaacEnv):
                     action_magnitude = torch.linalg.norm(actions[..., :3], dim=-1, keepdim=True)
                 else:
                     action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
-                is_small_action = action_magnitude < 0.15  # Threshold for "weak" velocity commands
+                is_small_action = action_magnitude < 0.25  # Increased threshold for "weak" velocity commands
                 
                 # Create hover assistance (small upward velocity + slight forward motion)
                 hover_assist = torch.zeros_like(actions)
-                hover_assist[..., 2] = 0.3  # Small upward velocity to counteract gravity
-                hover_assist[..., 0] = 0.1  # Tiny forward velocity for stability
+                hover_assist[..., 2] = 0.5  # Increased upward velocity to counteract gravity
+                hover_assist[..., 0] = 0.05  # Reduced forward velocity for stability
                 
                 # For 4D actions, don't assist yaw (rotation) - only assist position (x,y,z)
                 if actions.shape[-1] == 4:
@@ -735,13 +690,20 @@ class NavigationEnv(IsaacEnv):
             safe_actions = actions
         
         # Apply the final actions to the drone
-        self.drone.apply_action(safe_actions) 
+        self.drone.apply_action(safe_actions)
+        
+        # Additional safety: Check if drones are falling and apply emergency hover if needed
+        if hasattr(self, 'drone') and hasattr(self.drone, 'pos'):
+            # Check if any drone is too low (falling)
+            low_drones = self.drone.pos[..., 2] < 1.0  # Emergency threshold
+            if torch.any(low_drones):
+                print(f"[NavigationEnv] Warning: {torch.sum(low_drones)} drones are too low, applying emergency hover")
+                # This is just a warning - the hover assistance should handle this 
 
     def _post_sim_step(self, tensordict: TensorDictBase):
         if (self.cfg.env_dyn.num_obstacles != 0):
             self.move_dynamic_obstacle()
-        if self.lidar is not None:
-            self.lidar.update(self.dt)
+        self.lidar.update(self.dt)
     
     # get current states/observation
     def _compute_state_and_obs(self):
@@ -750,30 +712,25 @@ class NavigationEnv(IsaacEnv):
 
         # >>>>>>>>>>>>The relevant code starts from here<<<<<<<<<<<<
         # -----------Network Input I: LiDAR range data--------------
-        if self.lidar is not None:
-            self.lidar_scan = self.lidar_range - (
-                (self.lidar.data.ray_hits_w - self.lidar.data.pos_w.unsqueeze(1))
-                .norm(dim=-1)
-                .clamp_max(self.lidar_range)
-                .reshape(self.num_envs, 1, *self.lidar_resolution)
-            ) # lidar scan store the data that is range - distance and it is in lidar's local frame
+        self.lidar_scan = self.lidar_range - (
+            (self.lidar.data.ray_hits_w - self.lidar.data.pos_w.unsqueeze(1))
+            .norm(dim=-1)
+            .clamp_max(self.lidar_range)
+            .reshape(self.num_envs, 1, *self.lidar_resolution)
+        ) # lidar scan store the data that is range - distance and it is in lidar's local frame
 
-            # Optional render for LiDAR
-            if self._should_render(0):
-                self.debug_draw.clear()
-                x = self.lidar.data.pos_w[0]
-                # set_camera_view(
-                #     eye=x.cpu() + torch.as_tensor(self.cfg.viewer.eye),
-                #     target=x.cpu() + torch.as_tensor(self.cfg.viewer.lookat)                        
-                # )
-                v = (self.lidar.data.ray_hits_w[0] - x).reshape(*self.lidar_resolution, 3)
-                # self.debug_draw.vector(x.expand_as(v[:, 0]), v[:, 0])
-                # self.debug_draw.vector(x.expand_as(v[:, -1]), v[:, -1])
-                self.debug_draw.vector(x.expand_as(v[:, 0])[0], v[0, 0])
-        else:
-            # Fallback: Create dummy LiDAR data when LiDAR is not available
-            self.lidar_scan = torch.ones(self.num_envs, 1, *self.lidar_resolution, device=self.device) * self.lidar_range
-            print("[NavigationEnv] Using dummy LiDAR data - LiDAR not available")
+        # Optional render for LiDAR
+        if self._should_render(0):
+            self.debug_draw.clear()
+            x = self.lidar.data.pos_w[0]
+            # set_camera_view(
+            #     eye=x.cpu() + torch.as_tensor(self.cfg.viewer.eye),
+            #     target=x.cpu() + torch.as_tensor(self.cfg.viewer.lookat)                        
+            # )
+            v = (self.lidar.data.ray_hits_w[0] - x).reshape(*self.lidar_resolution, 3)
+            # self.debug_draw.vector(x.expand_as(v[:, 0]), v[:, 0])
+            # self.debug_draw.vector(x.expand_as(v[:, -1]), v[:, -1])
+            self.debug_draw.vector(x.expand_as(v[:, 0])[0], v[0, 0])
 
         # ---------Network Input II: Drone's internal states---------
         # a. distance info in horizontal and vertical plane

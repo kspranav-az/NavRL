@@ -31,7 +31,7 @@ env_dyn:
 viewer:
   eye: [8., 8., 8.]    # Very close view - should definitely see drones
   lookat: [0., 0., 2.]  # Looking directly at center drone
-  resolution: [1920, 1080]  # High resolution for clarity
+  resolution: [1280, 720]  # Reduced resolution for better performance
 
 logger:
   backend: tensorboard  # or "csv"
