@@ -646,23 +646,8 @@ class NavigationEnv(IsaacEnv):
         # Apply the actions to the drone (hover assistance is now handled by the transform)
         self.drone.apply_action(actions)
         
-        # Log if drones are too low for monitoring purposes
-        if hasattr(self, 'drone') and hasattr(self.drone, 'pos'):
-            # Get drone positions safely - handle different tensor shapes
-            try:
-                # Try to get positions from root_state first (most reliable)
-                if hasattr(self, 'root_state') and self.root_state is not None:
-                    drone_pos = self.root_state[..., :3]  # Extract x,y,z positions
-                    if drone_pos.dim() >= 2 and drone_pos.shape[-1] >= 3:
-                        # Check if drones are too low (z < 2.0)
-                        low_drones = drone_pos[..., 2] < 2.0
-                        if torch.any(low_drones):
-                            print(f"[NavigationEnv] Warning: {torch.sum(low_drones)} drones are too low (heights: {drone_pos[low_drones, 2]})")
-                            # Hover assistance should handle this automatically through the transform
-            except Exception as e:
-                # If position access fails, just log the warning without crashing
-                print(f"[NavigationEnv] Could not check drone heights: {e}")
-                # Continue without height monitoring 
+        # Height monitoring removed to prevent indexing issues
+        # Drones will rely on the policy to maintain stable flight 
 
     def _post_sim_step(self, tensordict: TensorDictBase):
         if (self.cfg.env_dyn.num_obstacles != 0):
