@@ -19,9 +19,9 @@ from torchrl.record.loggers import get_logger, generate_exp_name
 
 
 FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cfg")
-@hydra.main(config_path=FILE_PATH, config_name="train", version_base=None)
-def main(cfg):
-    # Add command line argument parsing for checkpoint path
+
+def parse_eval_args():
+    """Parse evaluation-specific command line arguments before Hydra"""
     parser = argparse.ArgumentParser(description="Evaluate NavRL Policy")
     parser.add_argument("--checkpoint", type=str, default=None, 
                        help="Path to checkpoint file (optional)")
@@ -29,11 +29,20 @@ def main(cfg):
                        help="Number of episodes to evaluate")
     parser.add_argument("--record_video", action="store_true",
                        help="Record evaluation video")
+    
+    # Parse only known arguments to avoid conflicts with Hydra
     args, unknown = parser.parse_known_args()
+    return args
+
+@hydra.main(config_path=FILE_PATH, config_name="train", version_base=None)
+def main(cfg):
+    # Parse evaluation arguments before Hydra processing
+    eval_args = parse_eval_args()
     
     print(f"[NavRL Evaluation] Starting evaluation with {cfg.env.num_envs} environments")
-    print(f"[NavRL Evaluation] Number of evaluation episodes: {args.num_episodes}")
-    print(f"[NavRL Evaluation] Video recording: {args.record_video}")
+    print(f"[NavRL Evaluation] Number of evaluation episodes: {eval_args.num_episodes}")
+    print(f"[NavRL Evaluation] Video recording: {eval_args.record_video}")
+    
     # Simulation App
     sim_app = SimulationApp({"headless": cfg.headless, "anti_aliasing": 1})
 
@@ -56,17 +65,20 @@ def main(cfg):
     # Transformed Environment
     transforms = []
     # transforms.append(ravel_composite(env.observation_spec, ("agents", "intrinsics"), start_dim=-1))
+    
+    # Simple controller setup without hover assistance
     controller = LeePositionController(9.81, env.drone.params).to(cfg.device)
     vel_transform = VelController(controller, yaw_control=False)
     transforms.append(vel_transform)
     transformed_env = TransformedEnv(env, Compose(*transforms)).train()
     transformed_env.set_seed(cfg.seed)    
+    
     # PPO Policy
     policy = PPO(cfg.algo, transformed_env.observation_spec, transformed_env.action_spec, cfg.device)
 
     # Load checkpoint
-    if args.checkpoint:
-        checkpoint_path = args.checkpoint
+    if eval_args.checkpoint:
+        checkpoint_path = eval_args.checkpoint
     else:
         # Look for latest checkpoint in logs directory
         possible_paths = [
@@ -88,8 +100,8 @@ def main(cfg):
     else:
         print(f"[NavRL Evaluation] Warning: No checkpoint found!")
         print("[NavRL Evaluation] Running evaluation with randomly initialized policy")
-        if args.checkpoint:
-            print(f"[NavRL Evaluation] Specified checkpoint: {args.checkpoint} not found")
+        if eval_args.checkpoint:
+            print(f"[NavRL Evaluation] Specified checkpoint: {eval_args.checkpoint} not found")
     
     # Episode Stats Collector
     episode_stats_keys = [
@@ -110,7 +122,7 @@ def main(cfg):
     )
 
     # Evaluation Loop (simplified for evaluation script)
-    print(f"\n[NavRL Evaluation] Starting evaluation with {args.num_episodes} episodes...")
+    print(f"\n[NavRL Evaluation] Starting evaluation with {eval_args.num_episodes} episodes...")
     
     # Run evaluation episodes
     env.eval()
@@ -118,8 +130,8 @@ def main(cfg):
     total_episodes = 0
     all_eval_results = []
     
-    for episode in range(args.num_episodes):
-        print(f"\n[NavRL Evaluation] Episode {episode + 1}/{args.num_episodes}")
+    for episode in range(eval_args.num_episodes):
+        print(f"\n[NavRL Evaluation] Episode {episode + 1}/{eval_args.num_episodes}")
         
         # Reset environment
         env.reset()
@@ -162,7 +174,7 @@ def main(cfg):
             logger.log_scalar(k, float(v), step=0)
         
         # Handle video recording if enabled
-        if args.record_video and "recording" in all_eval_results[-1]:
+        if eval_args.record_video and "recording" in all_eval_results[-1]:
             try:
                 import numpy as _np
                 import torch as _torch
@@ -182,7 +194,6 @@ def main(cfg):
     print(f"[NavRL Evaluation] Results logged to TensorBoard in: {logger.experiment_name}")
     
     env.close()
-
     sim_app.close()
 
 if __name__ == "__main__":
