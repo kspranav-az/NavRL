@@ -334,9 +334,6 @@ class NavigationEnv(IsaacEnv):
         self.dyn_obs_size = torch.zeros((self.cfg.env_dyn.num_obstacles, 3), dtype=torch.float, device=self.device) # size of dynamic obstacles
         
         print(f"[NavigationEnv] Initializing {self.cfg.env_dyn.num_obstacles} dynamic obstacles...")
-        print(f"[NavigationEnv] Category structure: N_w={N_w}, N_h={N_h}, dyn_obs_category_num={dyn_obs_category_num}")
-        print(f"[NavigationEnv] Obstacles per category: {self.dyn_obs_num_of_each_category}")
-        print(f"[NavigationEnv] Total obstacles will be: {dyn_obs_category_num * self.dyn_obs_num_of_each_category}")
 
         # helper function to check pos validity for even distribution condition
         def check_pos_validity(prev_pos_list, curr_pos, adjusted_obs_dist):
@@ -511,7 +508,6 @@ class NavigationEnv(IsaacEnv):
             if obstacle_idx < self.cfg.env_dyn.num_obstacles:
                 # Update individual obstacle state
                 obstacle_state = self.dyn_obs_state[obstacle_idx:obstacle_idx+1]
-                print(f"[NavigationEnv] Updating obstacle {obstacle_idx}, tensor shape: {obstacle_state.shape}")
                 dynamic_obstacle.write_root_state_to_sim(obstacle_state) 
                 dynamic_obstacle.write_data_to_sim()
                 dynamic_obstacle.update(self.cfg.sim.dt)
