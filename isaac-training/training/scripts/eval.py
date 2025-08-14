@@ -26,6 +26,8 @@ def parse_eval_args():
     parser = argparse.ArgumentParser(description="Evaluate NavRL Policy")
     parser.add_argument("--checkpoint", type=str, default=None, 
                        help="Path to checkpoint file (optional)")
+    parser.add_argument("--timestamp", type=str, default=None,
+                       help="Timestamp to find checkpoint (e.g., 25_08_14-23_09_39)")
     parser.add_argument("--num_episodes", type=int, default=10,
                        help="Number of episodes to evaluate")
     parser.add_argument("--record_video", action="store_true",
@@ -37,6 +39,61 @@ def parse_eval_args():
 
 # Parse arguments at module level, before Hydra
 EVAL_ARGS = parse_eval_args()
+
+def find_checkpoint_by_timestamp(timestamp):
+    """Find checkpoint by timestamp in logs directory"""
+    logs_dir = "logs"
+    if not os.path.exists(logs_dir):
+        return None
+    
+    # Look for directories matching the timestamp pattern
+    for item in os.listdir(logs_dir):
+        item_path = os.path.join(logs_dir, item)
+        if os.path.isdir(item_path) and timestamp in item:
+            # Found matching directory, look for checkpoints
+            checkpoints_dir = os.path.join(item_path, "checkpoints")
+            if os.path.exists(checkpoints_dir):
+                # Look for checkpoint files
+                for checkpoint_file in os.listdir(checkpoints_dir):
+                    if checkpoint_file.endswith('.pt'):
+                        checkpoint_path = os.path.join(checkpoints_dir, checkpoint_file)
+                        print(f"[NavRL Evaluation] Found checkpoint by timestamp '{timestamp}': {checkpoint_path}")
+                        return checkpoint_path
+    
+    print(f"[NavRL Evaluation] No checkpoint found for timestamp: {timestamp}")
+    return None
+
+def find_latest_checkpoint():
+    """Find the latest checkpoint automatically"""
+    logs_dir = "logs"
+    if not os.path.exists(logs_dir):
+        return None
+    
+    # Look for the most recent training directory
+    training_dirs = []
+    for item in os.listdir(logs_dir):
+        item_path = os.path.join(logs_dir, item)
+        if os.path.isdir(item_path) and "NavRL_train" in item:
+            training_dirs.append(item_path)
+    
+    if not training_dirs:
+        return None
+    
+    # Sort by modification time (most recent first)
+    training_dirs.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    latest_dir = training_dirs[0]
+    
+    # Look for checkpoints in the latest directory
+    checkpoints_dir = os.path.join(latest_dir, "checkpoints")
+    if os.path.exists(checkpoints_dir):
+        # Look for checkpoint files
+        for checkpoint_file in os.listdir(checkpoints_dir):
+            if checkpoint_file.endswith('.pt'):
+                checkpoint_path = os.path.join(checkpoints_dir, checkpoint_file)
+                print(f"[NavRL Evaluation] Found latest checkpoint: {checkpoint_path}")
+                return checkpoint_path
+    
+    return None
 
 @hydra.main(config_path=FILE_PATH, config_name="train", version_base=None)
 def main(cfg):
@@ -77,24 +134,21 @@ def main(cfg):
     # PPO Policy
     policy = PPO(cfg.algo, transformed_env.observation_spec, transformed_env.action_spec, cfg.device)
 
-    # Load checkpoint
-    if EVAL_ARGS.checkpoint:
-        checkpoint_path = EVAL_ARGS.checkpoint
-    else:
-        # Look for latest checkpoint in logs directory
-        possible_paths = [
-            "logs/NavRL/checkpoint_latest.pt",
-            "logs/checkpoint_latest.pt", 
-            "checkpoint_latest.pt",
-            "logs/NavRL/checkpoint_1000.pt",  # Common checkpoint names
-            "logs/NavRL/checkpoint_final.pt"
-        ]
-        checkpoint_path = None
-        for path in possible_paths:
-            if os.path.exists(path):
-                checkpoint_path = path
-                break
+    # Load checkpoint - Priority: 1. Direct path, 2. Timestamp, 3. Auto-find latest
+    checkpoint_path = None
     
+    if EVAL_ARGS.checkpoint:
+        # Direct checkpoint path specified
+        checkpoint_path = EVAL_ARGS.checkpoint
+        print(f"[NavRL Evaluation] Using specified checkpoint: {checkpoint_path}")
+    elif EVAL_ARGS.timestamp:
+        # Timestamp specified - find by timestamp
+        checkpoint_path = find_checkpoint_by_timestamp(EVAL_ARGS.timestamp)
+    else:
+        # Auto-find latest checkpoint
+        checkpoint_path = find_latest_checkpoint()
+    
+    # Load the checkpoint if found
     if checkpoint_path and os.path.exists(checkpoint_path):
         print(f"[NavRL Evaluation] Loading checkpoint from: {checkpoint_path}")
         policy.load_state_dict(torch.load(checkpoint_path, map_location=cfg.device))
@@ -103,6 +157,8 @@ def main(cfg):
         print("[NavRL Evaluation] Running evaluation with randomly initialized policy")
         if EVAL_ARGS.checkpoint:
             print(f"[NavRL Evaluation] Specified checkpoint: {EVAL_ARGS.checkpoint} not found")
+        elif EVAL_ARGS.timestamp:
+            print(f"[NavRL Evaluation] No checkpoint found for timestamp: {EVAL_ARGS.timestamp}")
     
     # Episode Stats Collector
     episode_stats_keys = [
