@@ -643,105 +643,15 @@ class NavigationEnv(IsaacEnv):
     def _pre_sim_step(self, tensordict: TensorDictBase):
         actions = tensordict[("agents", "action")] 
         
-        # Hover assistance for untrained policy (configurable)
-        # Can be disabled via config or environment variable for debugging
-        hover_enabled = getattr(self.cfg.env, 'hover_assistance', True)
-        if os.environ.get('DISABLE_HOVER_ASSISTANCE', 'false').lower() == 'true':
-            hover_enabled = False
-            print("[NavigationEnv] Hover assistance disabled via environment variable")
+        # Apply the actions to the drone (hover assistance is now handled by the transform)
+        self.drone.apply_action(actions)
         
-        # Additional safety: disable if tensor shapes are unexpected
-        # Support both 3D (x,y,z) and 4D (x,y,z,yaw) actions
-        if hover_enabled and actions.shape[-1] not in [3, 4]:
-            print(f"[Warning] Unexpected action shape {actions.shape}, disabling hover assistance")
-            hover_enabled = False
-        
-        if hover_enabled:
-            try:
-                # This helps during early training when policy outputs near-zero actions
-                # For 4D actions, only compute magnitude on x,y,z components (not yaw)
-                if actions.shape[-1] == 4:
-                    action_magnitude = torch.linalg.norm(actions[..., :3], dim=-1, keepdim=True)
-                else:
-                    action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
-                is_small_action = action_magnitude < 0.35  # Higher threshold for more frequent hover assistance
-                
-                # Create hover assistance (small upward velocity + slight forward motion)
-                hover_assist = torch.zeros_like(actions)
-                hover_assist[..., 2] = 0.8  # More aggressive upward velocity to counteract gravity
-                hover_assist[..., 0] = 0.02  # Minimal forward velocity for stability
-                
-                # For 4D actions, don't assist yaw (rotation) - only assist position (x,y,z)
-                if actions.shape[-1] == 4:
-                    hover_assist[..., 3] = 0.0  # No yaw assistance
-                
-                # Apply hover assistance only when policy outputs are too small
-                # This ensures trained policies aren't affected, only helps untrained ones
-                
-                # Simplified tensor broadcasting - just reshape to match actions
-                if is_small_action.shape != actions.shape:
-                    # Reshape is_small_action to match actions shape
-                    if is_small_action.dim() == 4:  # [9, 1, 1, 1]
-                        is_small_action = is_small_action.squeeze(-1).squeeze(-1)  # [9, 1]
-                    elif is_small_action.dim() == 3:  # [9, 1, 1]
-                        is_small_action = is_small_action.squeeze(-1)  # [9, 1]
-                    
-                    # Now expand to match actions
-                    is_small_action = is_small_action.unsqueeze(-1).expand_as(actions)
-                
-                # Apply assistance where actions are small
-                assisted_actions = torch.where(
-                    is_small_action,
-                    actions + hover_assist * 0.8,  # Scale down assistance
-                    actions
-                )
-                
-                # Additional safety: ensure minimum action magnitude for stable flight
-                # For 4D actions, only check magnitude on x,y,z components
-                if actions.shape[-1] == 4:
-                    final_magnitude = torch.linalg.norm(assisted_actions[..., :3], dim=-1, keepdim=True)
-                else:
-                    final_magnitude = torch.linalg.norm(assisted_actions, dim=-1, keepdim=True)
-                
-                min_safe_magnitude = 0.05
-                safe_actions = torch.where(
-                    final_magnitude < min_safe_magnitude,
-                    assisted_actions * (min_safe_magnitude / (final_magnitude + 1e-8)),
-                    assisted_actions
-                )
-                
-                # Update tensordict with assisted actions for consistency
-                tensordict[("agents", "action")] = safe_actions
-                
-                # Optional: Log assistance activity (uncomment for debugging)
-                # if self.progress_buf[0] % 100 == 0:  # Log every 100 steps
-                #     print(f"[NavigationEnv] Hover assistance - Action mag: {action_magnitude.mean():.3f}, Assisted: {torch.linalg.norm(safe_actions, dim=-1).mean():.3f}")
-                
-            except Exception as e:
-                print(f"[Warning] Hover assistance failed: {e}, using original actions")
-                safe_actions = actions
-                # Disable hover assistance for future steps to avoid repeated errors
-                print("[NavigationEnv] Disabling hover assistance due to error")
-                if hasattr(self.cfg.env, 'hover_assistance'):
-                    self.cfg.env.hover_assistance = False
-        else:
-            safe_actions = actions
-        
-        # Apply the final actions to the drone
-        self.drone.apply_action(safe_actions)
-        
-        # Additional safety: Check if drones are falling and apply emergency hover if needed
+        # Log if drones are too low for monitoring purposes
         if hasattr(self, 'drone') and hasattr(self.drone, 'pos'):
-            # Check if any drone is too low (falling)
-            low_drones = self.drone.pos[..., 2] < 2.0  # Increased emergency threshold
+            low_drones = self.drone.pos[..., 2] < 2.0
             if torch.any(low_drones):
-                print(f"[NavigationEnv] Warning: {torch.sum(low_drones)} drones are too low, applying emergency hover")
-                # Force upward velocity for dangerously low drones
-                emergency_actions = safe_actions.clone()
-                emergency_actions[low_drones, 2] = 1.0  # Strong upward force
-                emergency_actions[low_drones, 0] = 0.0  # Stop horizontal movement
-                emergency_actions[low_drones, 1] = 0.0  # Stop horizontal movement
-                safe_actions = emergency_actions 
+                print(f"[NavigationEnv] Warning: {torch.sum(low_drones)} drones are too low (heights: {self.drone.pos[low_drones, 2]})")
+                # Hover assistance should handle this automatically through the transform 
 
     def _post_sim_step(self, tensordict: TensorDictBase):
         if (self.cfg.env_dyn.num_obstacles != 0):

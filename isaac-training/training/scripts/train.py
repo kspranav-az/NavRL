@@ -45,6 +45,50 @@ def main(cfg):
     # Transformed Environment
     transforms = []
     # transforms.append(ravel_composite(env.observation_spec, ("agents", "intrinsics"), start_dim=-1))
+    
+    # Add hover assistance transform before the controller
+    from torchrl.envs.transforms import Transform
+    class HoverAssistanceTransform(Transform):
+        def __init__(self, action_key: str = ("agents", "action")):
+            super().__init__([], in_keys_inv=[])
+            self.action_key = action_key
+        
+        def _inv_call(self, tensordict: TensorDictBase) -> TensorDictBase:
+            actions = tensordict[self.action_key]
+            
+            # Apply hover assistance to 3D velocity actions
+            if actions.shape[-1] == 3:  # 3D velocity actions
+                # Compute action magnitude
+                action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
+                is_small_action = action_magnitude < 0.35
+                
+                # Create hover assistance (strong upward velocity)
+                hover_assist = torch.zeros_like(actions)
+                hover_assist[..., 2] = 0.8  # Strong upward velocity
+                hover_assist[..., 0] = 0.02  # Minimal forward velocity
+                
+                # Apply assistance where actions are small
+                assisted_actions = torch.where(
+                    is_small_action,
+                    actions + hover_assist * 0.8,
+                    actions
+                )
+                
+                # Ensure minimum action magnitude
+                final_magnitude = torch.linalg.norm(assisted_actions, dim=-1, keepdim=True)
+                min_safe_magnitude = 0.05
+                safe_actions = torch.where(
+                    final_magnitude < min_safe_magnitude,
+                    assisted_actions * (min_safe_magnitude / (final_magnitude + 1e-8)),
+                    assisted_actions
+                )
+                
+                tensordict.set(self.action_key, safe_actions)
+            
+            return tensordict
+    
+    # Add transforms in order: hover assistance first, then controller
+    transforms.append(HoverAssistanceTransform())
     controller = LeePositionController(9.81, env.drone.params).to(cfg.device)
     vel_transform = VelController(controller, yaw_control=False)
     transforms.append(vel_transform)
