@@ -20,6 +20,7 @@ from torchrl.record.loggers import get_logger, generate_exp_name
 
 FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cfg")
 
+# Parse evaluation-specific command line arguments BEFORE Hydra
 def parse_eval_args():
     """Parse evaluation-specific command line arguments before Hydra"""
     parser = argparse.ArgumentParser(description="Evaluate NavRL Policy")
@@ -34,14 +35,14 @@ def parse_eval_args():
     args, unknown = parser.parse_known_args()
     return args
 
+# Parse arguments at module level, before Hydra
+EVAL_ARGS = parse_eval_args()
+
 @hydra.main(config_path=FILE_PATH, config_name="train", version_base=None)
 def main(cfg):
-    # Parse evaluation arguments before Hydra processing
-    eval_args = parse_eval_args()
-    
     print(f"[NavRL Evaluation] Starting evaluation with {cfg.env.num_envs} environments")
-    print(f"[NavRL Evaluation] Number of evaluation episodes: {eval_args.num_episodes}")
-    print(f"[NavRL Evaluation] Video recording: {eval_args.record_video}")
+    print(f"[NavRL Evaluation] Number of evaluation episodes: {EVAL_ARGS.num_episodes}")
+    print(f"[NavRL Evaluation] Video recording: {EVAL_ARGS.record_video}")
     
     # Simulation App
     sim_app = SimulationApp({"headless": cfg.headless, "anti_aliasing": 1})
@@ -77,8 +78,8 @@ def main(cfg):
     policy = PPO(cfg.algo, transformed_env.observation_spec, transformed_env.action_spec, cfg.device)
 
     # Load checkpoint
-    if eval_args.checkpoint:
-        checkpoint_path = eval_args.checkpoint
+    if EVAL_ARGS.checkpoint:
+        checkpoint_path = EVAL_ARGS.checkpoint
     else:
         # Look for latest checkpoint in logs directory
         possible_paths = [
@@ -100,8 +101,8 @@ def main(cfg):
     else:
         print(f"[NavRL Evaluation] Warning: No checkpoint found!")
         print("[NavRL Evaluation] Running evaluation with randomly initialized policy")
-        if eval_args.checkpoint:
-            print(f"[NavRL Evaluation] Specified checkpoint: {eval_args.checkpoint} not found")
+        if EVAL_ARGS.checkpoint:
+            print(f"[NavRL Evaluation] Specified checkpoint: {EVAL_ARGS.checkpoint} not found")
     
     # Episode Stats Collector
     episode_stats_keys = [
@@ -122,7 +123,7 @@ def main(cfg):
     )
 
     # Evaluation Loop (simplified for evaluation script)
-    print(f"\n[NavRL Evaluation] Starting evaluation with {eval_args.num_episodes} episodes...")
+    print(f"\n[NavRL Evaluation] Starting evaluation with {EVAL_ARGS.num_episodes} episodes...")
     
     # Run evaluation episodes
     env.eval()
@@ -130,8 +131,8 @@ def main(cfg):
     total_episodes = 0
     all_eval_results = []
     
-    for episode in range(eval_args.num_episodes):
-        print(f"\n[NavRL Evaluation] Episode {episode + 1}/{eval_args.num_episodes}")
+    for episode in range(EVAL_ARGS.num_episodes):
+        print(f"\n[NavRL Evaluation] Episode {episode + 1}/{EVAL_ARGS.num_episodes}")
         
         # Reset environment
         env.reset()
@@ -174,7 +175,7 @@ def main(cfg):
             logger.log_scalar(k, float(v), step=0)
         
         # Handle video recording if enabled
-        if eval_args.record_video and "recording" in all_eval_results[-1]:
+        if EVAL_ARGS.record_video and "recording" in all_eval_results[-1]:
             try:
                 import numpy as _np
                 import torch as _torch
