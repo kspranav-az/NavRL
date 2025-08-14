@@ -172,16 +172,16 @@ class NavigationEnv(IsaacEnv):
         light = AssetBaseCfg(
             prim_path="/World/light",
             spawn=sim_utils.DistantLightCfg(
-                color=(0.8, 0.8, 0.8),      # Neutral white light to avoid yellow ground
-                intensity=500.0,             # Lower intensity for better visibility
-                angle=30.0                   # More focused light
+                color=(1.0, 1.0, 1.0),      # Pure white light for better color reproduction
+                intensity=600.0,             # Balanced intensity for good visibility
+                angle=25.0                   # More focused light
             ),
         )
         sky_light = AssetBaseCfg(
             prim_path="/World/skyLight",
             spawn=sim_utils.DomeLightCfg(
-                color=(0.6, 0.7, 0.8),       # Cooler ambient light to reduce yellow
-                intensity=200.0              # Lower ambient lighting
+                color=(0.8, 0.85, 0.9),      # Warmer ambient light for better colors
+                intensity=300.0              # Balanced ambient lighting
             ),
         )
         light.spawn.func(light.prim_path, light.spawn, light.init_state.pos)
@@ -272,7 +272,7 @@ class NavigationEnv(IsaacEnv):
                     ),
                 },
             ),
-            visual_material = sim_utils.PreviewSurfaceCfg(diffuse_color=(0.3, 0.3, 0.3), metallic=0.0),  # Dark gray to avoid yellow
+            visual_material = sim_utils.PreviewSurfaceCfg(diffuse_color=(0.4, 0.5, 0.6), metallic=0.0),  # Blue-gray for better color
             max_init_terrain_level=None,
             collision_group=-1,
             debug_vis=False,  # Disabled debug visualization to prevent yellow ground colors
@@ -311,8 +311,16 @@ class NavigationEnv(IsaacEnv):
         self.max_obs_2d_height = 5.0
         self.dyn_obs_width_res = max_obs_width/float(N_w)
         dyn_obs_category_num = N_w * N_h
-        self.dyn_obs_num_of_each_category = int(self.cfg.env_dyn.num_obstacles / dyn_obs_category_num)
-        self.cfg.env_dyn.num_obstacles = self.dyn_obs_num_of_each_category * dyn_obs_category_num # in case of the roundup error
+        # Ensure we have at least 1 obstacle per category, and handle cases where num_obstacles < category_num
+        if self.cfg.env_dyn.num_obstacles < dyn_obs_category_num:
+            # If we have fewer obstacles than categories, distribute them evenly
+            self.dyn_obs_num_of_each_category = 1
+            # Adjust the total to match the category structure
+            self.cfg.env_dyn.num_obstacles = dyn_obs_category_num
+            print(f"[NavigationEnv] Adjusted dynamic obstacles from {self.cfg.env_dyn.num_obstacles} to {dyn_obs_category_num} to fit category structure")
+        else:
+            self.dyn_obs_num_of_each_category = int(self.cfg.env_dyn.num_obstacles / dyn_obs_category_num)
+            self.cfg.env_dyn.num_obstacles = self.dyn_obs_num_of_each_category * dyn_obs_category_num
 
 
         # Dynamic obstacle info
@@ -326,6 +334,8 @@ class NavigationEnv(IsaacEnv):
         self.dyn_obs_size = torch.zeros((self.cfg.env_dyn.num_obstacles, 3), dtype=torch.float, device=self.device) # size of dynamic obstacles
         
         print(f"[NavigationEnv] Initializing {self.cfg.env_dyn.num_obstacles} dynamic obstacles...")
+        print(f"[NavigationEnv] Category structure: N_w={N_w}, N_h={N_h}, dyn_obs_category_num={dyn_obs_category_num}")
+        print(f"[NavigationEnv] Obstacles per category: {self.dyn_obs_num_of_each_category}")
 
         # helper function to check pos validity for even distribution condition
         def check_pos_validity(prev_pos_list, curr_pos, adjusted_obs_dist):
@@ -654,12 +664,12 @@ class NavigationEnv(IsaacEnv):
                     action_magnitude = torch.linalg.norm(actions[..., :3], dim=-1, keepdim=True)
                 else:
                     action_magnitude = torch.linalg.norm(actions, dim=-1, keepdim=True)
-                is_small_action = action_magnitude < 0.25  # Increased threshold for "weak" velocity commands
+                is_small_action = action_magnitude < 0.35  # Higher threshold for more frequent hover assistance
                 
                 # Create hover assistance (small upward velocity + slight forward motion)
                 hover_assist = torch.zeros_like(actions)
-                hover_assist[..., 2] = 0.5  # Increased upward velocity to counteract gravity
-                hover_assist[..., 0] = 0.05  # Reduced forward velocity for stability
+                hover_assist[..., 2] = 0.8  # More aggressive upward velocity to counteract gravity
+                hover_assist[..., 0] = 0.02  # Minimal forward velocity for stability
                 
                 # For 4D actions, don't assist yaw (rotation) - only assist position (x,y,z)
                 if actions.shape[-1] == 4:
@@ -723,10 +733,15 @@ class NavigationEnv(IsaacEnv):
         # Additional safety: Check if drones are falling and apply emergency hover if needed
         if hasattr(self, 'drone') and hasattr(self.drone, 'pos'):
             # Check if any drone is too low (falling)
-            low_drones = self.drone.pos[..., 2] < 1.0  # Emergency threshold
+            low_drones = self.drone.pos[..., 2] < 2.0  # Increased emergency threshold
             if torch.any(low_drones):
                 print(f"[NavigationEnv] Warning: {torch.sum(low_drones)} drones are too low, applying emergency hover")
-                # This is just a warning - the hover assistance should handle this 
+                # Force upward velocity for dangerously low drones
+                emergency_actions = safe_actions.clone()
+                emergency_actions[low_drones, 2] = 1.0  # Strong upward force
+                emergency_actions[low_drones, 0] = 0.0  # Stop horizontal movement
+                emergency_actions[low_drones, 1] = 0.0  # Stop horizontal movement
+                safe_actions = emergency_actions 
 
     def _post_sim_step(self, tensordict: TensorDictBase):
         if (self.cfg.env_dyn.num_obstacles != 0):
