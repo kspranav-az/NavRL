@@ -649,17 +649,20 @@ class NavigationEnv(IsaacEnv):
         # Log if drones are too low for monitoring purposes
         if hasattr(self, 'drone') and hasattr(self.drone, 'pos'):
             # Get drone positions safely - handle different tensor shapes
-            drone_pos = self.drone.pos
-            if drone_pos.dim() == 2 and drone_pos.shape[1] == 1:
-                # Shape is [9, 1] - need to get the actual position from root_state
-                drone_pos = self.root_state[..., :3]  # Use root_state for 3D positions
-            
-            # Check if drones are too low (z < 2.0)
-            if drone_pos.shape[-1] >= 3:  # Ensure we have at least 3 dimensions
-                low_drones = drone_pos[..., 2] < 2.0
-                if torch.any(low_drones):
-                    print(f"[NavigationEnv] Warning: {torch.sum(low_drones)} drones are too low (heights: {drone_pos[low_drones, 2]})")
-                    # Hover assistance should handle this automatically through the transform 
+            try:
+                # Try to get positions from root_state first (most reliable)
+                if hasattr(self, 'root_state') and self.root_state is not None:
+                    drone_pos = self.root_state[..., :3]  # Extract x,y,z positions
+                    if drone_pos.dim() >= 2 and drone_pos.shape[-1] >= 3:
+                        # Check if drones are too low (z < 2.0)
+                        low_drones = drone_pos[..., 2] < 2.0
+                        if torch.any(low_drones):
+                            print(f"[NavigationEnv] Warning: {torch.sum(low_drones)} drones are too low (heights: {drone_pos[low_drones, 2]})")
+                            # Hover assistance should handle this automatically through the transform
+            except Exception as e:
+                # If position access fails, just log the warning without crashing
+                print(f"[NavigationEnv] Could not check drone heights: {e}")
+                # Continue without height monitoring 
 
     def _post_sim_step(self, tensordict: TensorDictBase):
         if (self.cfg.env_dyn.num_obstacles != 0):
