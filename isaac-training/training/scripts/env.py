@@ -648,10 +648,18 @@ class NavigationEnv(IsaacEnv):
         
         # Log if drones are too low for monitoring purposes
         if hasattr(self, 'drone') and hasattr(self.drone, 'pos'):
-            low_drones = self.drone.pos[..., 2] < 2.0
-            if torch.any(low_drones):
-                print(f"[NavigationEnv] Warning: {torch.sum(low_drones)} drones are too low (heights: {self.drone.pos[low_drones, 2]})")
-                # Hover assistance should handle this automatically through the transform 
+            # Get drone positions safely - handle different tensor shapes
+            drone_pos = self.drone.pos
+            if drone_pos.dim() == 2 and drone_pos.shape[1] == 1:
+                # Shape is [9, 1] - need to get the actual position from root_state
+                drone_pos = self.root_state[..., :3]  # Use root_state for 3D positions
+            
+            # Check if drones are too low (z < 2.0)
+            if drone_pos.shape[-1] >= 3:  # Ensure we have at least 3 dimensions
+                low_drones = drone_pos[..., 2] < 2.0
+                if torch.any(low_drones):
+                    print(f"[NavigationEnv] Warning: {torch.sum(low_drones)} drones are too low (heights: {drone_pos[low_drones, 2]})")
+                    # Hover assistance should handle this automatically through the transform 
 
     def _post_sim_step(self, tensordict: TensorDictBase):
         if (self.cfg.env_dyn.num_obstacles != 0):
