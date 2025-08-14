@@ -48,13 +48,12 @@ def main(cfg):
     
     # Add hover assistance transform before the controller
     from torchrl.envs.transforms import Transform
-    from torchrl.data import TensorDict
     class HoverAssistanceTransform(Transform):
         def __init__(self, action_key: str = ("agents", "action")):
             super().__init__([], in_keys_inv=[])
             self.action_key = action_key
         
-        def _inv_call(self, tensordict: TensorDict) -> TensorDict:
+        def _inv_call(self, tensordict) -> "TensorDict":
             actions = tensordict[self.action_key]
             
             # Apply hover assistance to 3D velocity actions
