@@ -1,18 +1,17 @@
 algo:
   feature_extractor:
-    learning_rate: 5e-4
-    dyn_obs_num: 5
+    learning_rate: 1e-3  # Changed from 5e-4 to 1e-3 for faster learning
   
   actor:
-    learning_rate: 5e-4
+    learning_rate: 1e-3  # Changed from 5e-4 to 1e-3 for faster learning
     clip_ratio: 0.1
     action_limit: 2.0 # m/s
   
   critic:
-    learning_rate: 5e-4
+    learning_rate: 1e-3  # Changed from 5e-4 to 1e-3 for faster learning
     clip_ratio: 0.1
   
-  entropy_loss_coefficient: 1e-3 # encourage exploration
-  training_frame_num: 32
-  training_epoch_num: 4
-  num_minibatches: 16 # split into N minibatches
+  entropy_loss_coefficient: 5e-3  # Changed from 1e-3 to 5e-3 for more exploration
+  training_frame_num: 64   # Changed from 32 to 64 for more data per training step
+  training_epoch_num: 2    # Changed from 4 to 2 for faster training
+  num_minibatches: 8       # Changed from 16 to 8 for faster processing

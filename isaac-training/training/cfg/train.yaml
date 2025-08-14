@@ -14,25 +14,24 @@ eval_interval: 1000 # evaluate the policy for every N training steps
 save_interval: 1000
 
 # Training Environment
+# Training Environment
 env:
-  num_envs: 9 # Reduced to 9 environments (3x3 grid) for better obstacle management
-  max_episode_length: 2200
-  env_spacing: 15.0  # Increased spacing for better drone separation and obstacle placement
-  num_obstacles: 8   # Reduced obstacles for better drone visibility and training
-  hover_assistance: True  # Enable hover assistance for untrained policies
-  # Quick toggle: set to False to disable hover assistance
-  # Or set environment variable: DISABLE_HOVER_ASSISTANCE=true
+  num_envs: 20        # Changed from 9 to 20 drones
+  max_episode_length: 500  # Changed from 2200 to 500 for faster episodes
+  env_spacing: 25.0   # Changed from 15.0 to 25.0 for better 20-drone + 120-obstacle spacing
+  num_obstacles: 40   # Changed from 8 to 40 static obstacles
+  hover_assistance: False  # Changed from True to False (no artificial assistance)
 
 env_dyn:
-  num_obstacles: 5  # Reduced dynamic obstacles for better training stability
+  num_obstacles: 80   # Changed from 5 to 80 dynamic obstacles
   vel_range: [0.5, 1.5]
   local_range: [5.0, 5.0, 4.5]
 
 viewer:
-  eye: [8., 8., 8.]    # Very close view - should definitely see drones
-  lookat: [0., 0., 2.]  # Looking directly at center drone
-  resolution: [1280, 720]  # Reduced resolution for better performance
-
+  eye: [15., 15., 15.]   # Changed from [8., 8., 8.] for better view of crowded environment
+  lookat: [0., 0., 2.]
+  resolution: [1280, 720]
+  
 logger:
   backend: tensorboard  # or "csv"
   log_dir: logs
