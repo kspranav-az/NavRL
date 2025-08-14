@@ -333,7 +333,7 @@ def main(cfg):
     print(f"\n[NavRL Evaluation] Evaluation completed!")
     print(f"[NavRL Evaluation] Successful episodes: {total_episodes}/{EVAL_ARGS.num_episodes}")
     if total_episodes > 0:
-        print(f"[NavRL Evaluation] Results logged to TensorBoard in: {logger.experiment_name}")
+        print(f"[NavRL Evaluation] Results logged to TensorBoard in: {logger.log_dir}")
     else:
         print("[NavRL Evaluation] No results to log due to evaluation failures")
     
