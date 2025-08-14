@@ -1,6 +1,7 @@
 algo:
   feature_extractor:
     learning_rate: 1e-3  # Changed from 5e-4 to 1e-3 for faster learning
+    dyn_obs_num: 5       # ADD THIS LINE - Number of dynamic obstacles to track
   
   actor:
     learning_rate: 1e-3  # Changed from 5e-4 to 1e-3 for faster learning
