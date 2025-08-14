@@ -6,7 +6,7 @@ defaults:
 
 headless: False  # Make sure visual rendering is enabled
 device: "cuda:0"
-seed: 0
+seed: 101
 
 # Total Training Length
 max_frame_num: 12e8 # max frame 

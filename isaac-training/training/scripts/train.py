@@ -109,7 +109,7 @@ def main(cfg):
                 cfg=cfg,
                 exploration_type=ExplorationType.MEAN
             )
-            env.enable_render( cfg.headless)
+            env.enable_render(True)
             env.train()
             env.reset()
             info.update(eval_info)
