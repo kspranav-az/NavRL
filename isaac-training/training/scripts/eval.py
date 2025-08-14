@@ -53,12 +53,45 @@ def find_checkpoint_by_timestamp(timestamp):
             # Found matching directory, look for checkpoints
             checkpoints_dir = os.path.join(item_path, "checkpoints")
             if os.path.exists(checkpoints_dir):
-                # Look for checkpoint files
+                # Look for checkpoint files with priority: final > highest number > any .pt
+                checkpoint_files = []
                 for checkpoint_file in os.listdir(checkpoints_dir):
                     if checkpoint_file.endswith('.pt'):
-                        checkpoint_path = os.path.join(checkpoints_dir, checkpoint_file)
-                        print(f"[NavRL Evaluation] Found checkpoint by timestamp '{timestamp}': {checkpoint_path}")
-                        return checkpoint_path
+                        checkpoint_files.append(checkpoint_file)
+                
+                if not checkpoint_files:
+                    continue
+                
+                # Priority 1: checkpoint_final.pt
+                if "checkpoint_final.pt" in checkpoint_files:
+                    checkpoint_path = os.path.join(checkpoints_dir, "checkpoint_final.pt")
+                    print(f"[NavRL Evaluation] Found final checkpoint by timestamp '{timestamp}': {checkpoint_path}")
+                    return checkpoint_path
+                
+                # Priority 2: Highest numbered checkpoint
+                numbered_checkpoints = []
+                for file in checkpoint_files:
+                    if file.startswith("checkpoint_") and file != "checkpoint_final.pt":
+                        try:
+                            # Extract number from checkpoint_X.pt
+                            number_str = file.replace("checkpoint_", "").replace(".pt", "")
+                            if number_str.isdigit():
+                                numbered_checkpoints.append((int(number_str), file))
+                        except:
+                            continue
+                
+                if numbered_checkpoints:
+                    # Sort by number (highest first) and take the first one
+                    numbered_checkpoints.sort(key=lambda x: x[0], reverse=True)
+                    best_checkpoint = numbered_checkpoints[0][1]
+                    checkpoint_path = os.path.join(checkpoints_dir, best_checkpoint)
+                    print(f"[NavRL Evaluation] Found highest numbered checkpoint by timestamp '{timestamp}': {checkpoint_path}")
+                    return checkpoint_path
+                
+                # Priority 3: Any .pt file
+                checkpoint_path = os.path.join(checkpoints_dir, checkpoint_files[0])
+                print(f"[NavRL Evaluation] Found checkpoint by timestamp '{timestamp}': {checkpoint_path}")
+                return checkpoint_path
     
     print(f"[NavRL Evaluation] No checkpoint found for timestamp: {timestamp}")
     return None
@@ -86,12 +119,45 @@ def find_latest_checkpoint():
     # Look for checkpoints in the latest directory
     checkpoints_dir = os.path.join(latest_dir, "checkpoints")
     if os.path.exists(checkpoints_dir):
-        # Look for checkpoint files
+        # Look for checkpoint files with priority: final > highest number > any .pt
+        checkpoint_files = []
         for checkpoint_file in os.listdir(checkpoints_dir):
             if checkpoint_file.endswith('.pt'):
-                checkpoint_path = os.path.join(checkpoints_dir, checkpoint_file)
-                print(f"[NavRL Evaluation] Found latest checkpoint: {checkpoint_path}")
-                return checkpoint_path
+                checkpoint_files.append(checkpoint_file)
+        
+        if not checkpoint_files:
+            return None
+        
+        # Priority 1: checkpoint_final.pt
+        if "checkpoint_final.pt" in checkpoint_files:
+            checkpoint_path = os.path.join(checkpoints_dir, "checkpoint_final.pt")
+            print(f"[NavRL Evaluation] Found latest final checkpoint: {checkpoint_path}")
+            return checkpoint_path
+        
+        # Priority 2: Highest numbered checkpoint
+        numbered_checkpoints = []
+        for file in checkpoint_files:
+            if file.startswith("checkpoint_") and file != "checkpoint_final.pt":
+                try:
+                    # Extract number from checkpoint_X.pt
+                    number_str = file.replace("checkpoint_", "").replace(".pt", "")
+                    if number_str.isdigit():
+                        numbered_checkpoints.append((int(number_str), file))
+                except:
+                    continue
+        
+        if numbered_checkpoints:
+            # Sort by number (highest first) and take the first one
+            numbered_checkpoints.sort(key=lambda x: x[0], reverse=True)
+            best_checkpoint = numbered_checkpoints[0][1]
+            checkpoint_path = os.path.join(checkpoints_dir, best_checkpoint)
+            print(f"[NavRL Evaluation] Found latest highest numbered checkpoint: {checkpoint_path}")
+            return checkpoint_path
+        
+        # Priority 3: Any .pt file
+        checkpoint_path = os.path.join(checkpoints_dir, checkpoint_files[0])
+        print(f"[NavRL Evaluation] Found latest checkpoint: {checkpoint_path}")
+        return checkpoint_path
     
     return None
 
@@ -190,27 +256,43 @@ def main(cfg):
     for episode in range(EVAL_ARGS.num_episodes):
         print(f"\n[NavRL Evaluation] Episode {episode + 1}/{EVAL_ARGS.num_episodes}")
         
-        # Reset environment
-        env.reset()
-        
-        # Evaluate policy
-        eval_info = evaluate(
-            env=transformed_env, 
-            policy=policy,
-            seed=cfg.seed + episode,  # Different seed for each episode 
-            cfg=cfg,
-            exploration_type=ExplorationType.MEAN
-        )
-        
-        all_eval_results.append(eval_info)
-        
-        # Print episode results
-        if "eval/return" in eval_info:
-            print(f"[NavRL Evaluation] Episode {episode + 1} Return: {eval_info['eval/return']:.3f}")
-        if "eval/episode_len" in eval_info:
-            print(f"[NavRL Evaluation] Episode {episode + 1} Length: {eval_info['eval/episode_len']:.1f}")
-        
-        total_episodes += 1
+        try:
+            # Reset environment
+            env.reset()
+            
+            # Evaluate policy with error handling
+            print(f"[NavRL Evaluation] Running episode {episode + 1}...")
+            eval_info = evaluate(
+                env=transformed_env, 
+                policy=policy,
+                seed=cfg.seed + episode,  # Different seed for each episode 
+                cfg=cfg,
+                exploration_type=ExplorationType.MEAN
+            )
+            
+            all_eval_results.append(eval_info)
+            
+            # Print episode results
+            if "eval/return" in eval_info:
+                print(f"[NavRL Evaluation] Episode {episode + 1} Return: {eval_info['eval/return']:.3f}")
+            if "eval/episode_len" in eval_info:
+                print(f"[NavRL Evaluation] Episode {episode + 1} Length: {eval_info['eval/episode_len']:.1f}")
+            
+            total_episodes += 1
+            print(f"[NavRL Evaluation] Episode {episode + 1} completed successfully")
+            
+        except Exception as e:
+            print(f"[NavRL Evaluation] Error in episode {episode + 1}: {str(e)}")
+            print(f"[NavRL Evaluation] Skipping episode {episode + 1} and continuing...")
+            
+            # Try to reset environment for next episode
+            try:
+                env.reset()
+            except:
+                print(f"[NavRL Evaluation] Failed to reset environment, stopping evaluation")
+                break
+            
+            continue
     
     # Calculate and log average results
     print(f"\n[NavRL Evaluation] ===== FINAL RESULTS =====")
@@ -245,10 +327,15 @@ def main(cfg):
                 print("[NavRL Evaluation] Video recorded and logged to TensorBoard")
             except Exception as e:
                 print(f"[NavRL Evaluation] Failed to record video: {e}")
+    else:
+        print("[NavRL Evaluation] No episodes completed successfully")
     
-    print(f"\n[NavRL Evaluation] Evaluation completed successfully!")
-    print(f"[NavRL Evaluation] Total episodes evaluated: {total_episodes}")
-    print(f"[NavRL Evaluation] Results logged to TensorBoard in: {logger.experiment_name}")
+    print(f"\n[NavRL Evaluation] Evaluation completed!")
+    print(f"[NavRL Evaluation] Successful episodes: {total_episodes}/{EVAL_ARGS.num_episodes}")
+    if total_episodes > 0:
+        print(f"[NavRL Evaluation] Results logged to TensorBoard in: {logger.experiment_name}")
+    else:
+        print("[NavRL Evaluation] No results to log due to evaluation failures")
     
     env.close()
     sim_app.close()
