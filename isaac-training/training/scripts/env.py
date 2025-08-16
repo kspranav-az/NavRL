@@ -240,7 +240,7 @@ class NavigationEnv(IsaacEnv):
                     print(f"[NavigationEnv] Failed to create ground reference: {e}")
 
         # Increased map range for better drone separation and obstacle placement
-        self.map_range = [25.0, 25.0, 6.0]
+        self.map_range = [25.0, 25.0, 8.0]  # Increased height from 6.0 to 8.0 to accommodate taller obstacles
 
         terrain_cfg = TerrainImporterCfg(
             num_envs=self.num_envs,
@@ -265,8 +265,8 @@ class NavigationEnv(IsaacEnv):
                         border_width=0.0,
                         num_obstacles=self.cfg.env.num_obstacles,
                         obstacle_height_mode="choice",  # Fixed: use "choice" instead of "range"
-                        obstacle_width_range=(0.4, 1.1),
-                        obstacle_height_range=(1.0, 4.0),  # Reduced max height to prevent conflicts with drones
+                        obstacle_width_range=(2.0, 4.0),  # Increased from (0.4, 1.1) to (2.0, 4.0) for larger obstacles
+                        obstacle_height_range=(3.0, 7.0),  # Increased from (2.0, 6.0) to (3.0, 7.0) to block drone flight paths
                         platform_width=0.0,
                         # Removed obstacle_height_probability as it doesn't exist in IsaacLab
                     ),
@@ -306,9 +306,9 @@ class NavigationEnv(IsaacEnv):
         # [[0, 0.5], [0.5, inf]] we want to distinguish 3D obstacles and 2d obstacles
         N_w = 4 # number of width intervals between [0, 1]
         N_h = 2 # number of height: current only support binary
-        max_obs_width = 1.0
-        self.max_obs_3d_height = 1.0
-        self.max_obs_2d_height = 5.0
+        max_obs_width = 3.0  # Increased from 1.0 to 3.0 for larger dynamic obstacles
+        self.max_obs_3d_height = 5.0  # Increased from 3.0 to 5.0 to block drone flight paths
+        self.max_obs_2d_height = 10.0  # Increased from 8.0 to 10.0 to create proper barriers
         self.dyn_obs_width_res = max_obs_width/float(N_w)
         dyn_obs_category_num = N_w * N_h
         # Ensure we have at least 1 obstacle per category, and handle cases where num_obstacles < category_num
@@ -343,12 +343,12 @@ class NavigationEnv(IsaacEnv):
             return True            
         
         # Improved obstacle distance calculation for better distribution
-        obs_dist = 2 * np.sqrt(self.map_range[0] * self.map_range[1] / max(self.cfg.env_dyn.num_obstacles, 1))
+        obs_dist = 4 * np.sqrt(self.map_range[0] * self.map_range[1] / max(self.cfg.env_dyn.num_obstacles, 1))  # Increased from 2x to 4x for better spacing with larger obstacles
         curr_obs_dist = obs_dist
         prev_pos_list = [] # for distance check
         
         # Ensure minimum distance from drone spawn areas
-        drone_spawn_radius = 3.0  # Keep obstacles away from drone spawn points
+        drone_spawn_radius = 6.0  # Increased from 3.0 to 6.0 to accommodate larger obstacles
         
         cuboid_category_num = cylinder_category_num = int(dyn_obs_category_num/N_h)
         for category_idx in range(cuboid_category_num + cylinder_category_num):
@@ -369,7 +369,7 @@ class NavigationEnv(IsaacEnv):
                         continue
                     
                     if (category_idx < cuboid_category_num):
-                        oz = np.random.uniform(low=0.5, high=self.map_range[2] - 1.0)  # Keep away from ground and ceiling
+                        oz = np.random.uniform(low=2.0, high=self.map_range[2] - 3.0)  # Adjusted for new obstacle heights
                     else:
                         oz = self.max_obs_2d_height/2. # half of the height
                     
@@ -392,7 +392,7 @@ class NavigationEnv(IsaacEnv):
                     ox = np.random.uniform(low=-self.map_range[0] + 5, high=self.map_range[0] - 5)
                     oy = np.random.uniform(low=-self.map_range[1] + 5, high=self.map_range[1] - 5)
                     if (category_idx < cuboid_category_num):
-                        oz = np.random.uniform(low=0.5, high=self.map_range[2] - 1.0)
+                        oz = np.random.uniform(low=2.0, high=self.map_range[2] - 3.0)  # Adjusted for new obstacle heights
                     else:
                         oz = self.max_obs_2d_height/2.
                 
@@ -581,7 +581,7 @@ class NavigationEnv(IsaacEnv):
 
             # generate random positions with improved height range
             target_pos = 48. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-24.)
-            heights = 4.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (6.0 - 4.0)  # Increased height range to prevent falling
+            heights = 2.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (4.0 - 2.0)  # Lowered height range to force obstacle navigation
             target_pos[:, 0, 2] = heights# height
             target_pos = target_pos * selected_masks + selected_shifts
             
@@ -609,7 +609,7 @@ class NavigationEnv(IsaacEnv):
 
             # generate random positions with improved height range
             pos = 48. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-24.)
-            heights = 6.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (8.0 - 6.0)  # Increased spawn height range to prevent falling
+            heights = 3.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (5.0 - 3.0)  # Lowered spawn height range to force obstacle navigation
             pos[:, 0, 2] = heights# height
             pos = pos * selected_masks + selected_shifts
             
