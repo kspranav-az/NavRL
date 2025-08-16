@@ -572,18 +572,34 @@ class NavigationEnv(IsaacEnv):
     
     def reset_target(self, env_ids: torch.Tensor):
         if (self.training):
-            # decide which side
-            masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
-            shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
-            mask_indices = np.random.randint(0, masks.size(0), size=env_ids.size(0))
-            selected_masks = masks[mask_indices].unsqueeze(1)
-            selected_shifts = shifts[mask_indices].unsqueeze(1)
-
-            # generate random positions with improved height range
-            target_pos = 48. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-24.)
+            # Create balanced target distribution including middle area
+            # 40% chance for edge targets, 60% chance for middle area targets
+            edge_prob = 0.4
+            middle_prob = 0.6
+            
+            target_pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
+            
+            for i in range(env_ids.size(0)):
+                if torch.rand(1, device=self.device) < edge_prob:
+                    # Edge targets (original logic)
+                    masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
+                    shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
+                    mask_idx = np.random.randint(0, masks.size(0))
+                    mask = masks[mask_idx].unsqueeze(0)
+                    shift = shifts[mask_idx].unsqueeze(0)
+                    
+                    pos = 48. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-24.)
+                    pos = pos * mask + shift
+                    target_pos[i] = pos
+                else:
+                    # Middle area targets (new logic)
+                    # Generate targets in the center area (-12, 12) × (-12, 12)
+                    pos = 24. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-12.)
+                    target_pos[i] = pos
+            
+            # Set heights for all targets
             heights = 2.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (4.0 - 2.0)  # Lowered height range to force obstacle navigation
-            target_pos[:, 0, 2] = heights# height
-            target_pos = target_pos * selected_masks + selected_shifts
+            target_pos[:, 0, 2] = heights
             
             # apply target pos
             self.target_pos[env_ids] = target_pos
@@ -594,7 +610,7 @@ class NavigationEnv(IsaacEnv):
         else:
             self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
             self.target_pos[:, 0, 1] = -24.
-            self.target_pos[:, 0, 2] = 2.            
+            self.target_pos[:, 0, 2] = 2.          
 
 
     def _reset_idx(self, env_ids: torch.Tensor):
