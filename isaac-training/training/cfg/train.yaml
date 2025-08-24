@@ -8,30 +8,30 @@ headless: False  # Make sure visual rendering is enabled
 device: "cuda:0"
 seed: 101
 
-# Total Training Length - Optimized for full resource utilization
+# Total Training Length - Optimized for stability and resource utilization
 max_frame_num: 10000000  # Keep 10M frames for ~10 hours training
 eval_interval: 50000      # Evaluate every 50K frames (every ~30 minutes)
 save_interval: 100000     # Save every 100K frames (every ~1 hour)
 
-# Training Environment - Optimized for full resource utilization
+# Training Environment - Scaled back for stability while maintaining performance
 env:
-  num_envs: 1000         # Increased to 1000 drones to utilize full VRAM (16GB)
-  max_episode_length: 300  # Increased to 300 for more complex episodes
-  env_spacing: 20.0      # Reduced spacing to fit more environments
-  num_obstacles: 80      # Increased to 80 static obstacles for full challenge
+  num_envs: 750          # Reduced from 1000 to 750 for stability
+  max_episode_length: 250  # Reduced from 300 to 250 for better stability
+  env_spacing: 22.0      # Increased spacing slightly for better separation
+  num_obstacles: 60      # Reduced from 80 to 60 for stability
   hover_assistance: False
 
 env_dyn:
-  num_obstacles: 120     # Increased to 120 dynamic obstacles for full resource utilization
-  vel_range: [0.5, 2.0]  # Increased velocity range for more dynamic scenarios
-  local_range: [8.0, 8.0, 6.0]  # Increased local range for more complex interactions
+  num_obstacles: 90      # Reduced from 120 to 90 for stability
+  vel_range: [0.5, 1.8]  # Reduced max velocity from 2.0 to 1.8
+  local_range: [6.0, 6.0, 5.0]  # Reduced from 8.0 to 6.0 for stability
 
 viewer:
-  eye: [20., 20., 20.]   # Increased view distance for 1000 drones
+  eye: [18., 18., 18.]   # Reduced from 20.0 to 18.0 for better performance
   lookat: [0., 0., 2.]
-  resolution: [1920, 1080]  # Increased to 1080p for better monitoring
+  resolution: [1600, 900]  # Reduced from 1920x1080 to 1600x900 for stability
   
 logger:
   backend: tensorboard  # or "csv"
   log_dir: logs
-  exp_name: NavRL_1000drones_fullpower
+  exp_name: NavRL_750drones_stable

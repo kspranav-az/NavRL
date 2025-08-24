@@ -1,21 +1,21 @@
 algo:
   feature_extractor:
     learning_rate: 5e-4  # Keep stable learning rate for 10 hours
-    dyn_obs_num: 8       # Increased from 5 to 8 for more obstacle tracking
-    hidden_size: 512      # Increased hidden size for more complex features
+    dyn_obs_num: 6       # Reduced from 8 to 6 for stability
+    hidden_size: 256      # Reduced from 512 to 256 for stability
   
   actor:
     learning_rate: 5e-4  # Keep stable learning rate for 10 hours
     clip_ratio: 0.1
-    action_limit: 2.5    # Increased action limit for more dynamic movement
-    hidden_size: 512     # Increased hidden size for more complex policy
+    action_limit: 2.2    # Reduced from 2.5 to 2.2 for stability
+    hidden_size: 256     # Reduced from 512 to 256 for stability
   
   critic:
     learning_rate: 5e-4  # Keep stable learning rate for 10 hours
     clip_ratio: 0.1
-    hidden_size: 512     # Increased hidden size for more complex value function
+    hidden_size: 256     # Reduced from 512 to 256 for stability
   
-  entropy_loss_coefficient: 2e-3  # Reduced for more focused learning with larger batches
-  training_frame_num: 256  # Increased to 256 for maximum GPU utilization
-  training_epoch_num: 6    # Increased to 6 for thorough policy updates
-  num_minibatches: 32      # Increased to 32 for maximum parallel processing
+  entropy_loss_coefficient: 3e-3  # Increased back to 3e-3 for better exploration
+  training_frame_num: 128  # Reduced from 256 to 128 for stability
+  training_epoch_num: 4    # Reduced from 6 to 4 for stability
+  num_minibatches: 16      # Reduced from 32 to 16 for stability
