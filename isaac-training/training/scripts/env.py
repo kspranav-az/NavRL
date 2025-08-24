@@ -7,6 +7,12 @@ from torchrl.data import UnboundedContinuousTensorSpec, CompositeSpec, DiscreteT
 import time
 import carb
 
+# IMPORTANT: Target Generation Changes
+# - Modified reset_target() and _reset_idx() functions to create balanced target distribution
+# - 40% edge targets, 60% middle area targets (-12 to +12 range)
+# - This allows drones to navigate THROUGH obstacles instead of just circling around them
+# - Drones now learn both edge navigation and interior obstacle avoidance
+
 # Configure Nucleus server immediately BEFORE any IsaacLab imports
 def _configure_nucleus_server_early():
     """Configure the Nucleus server asset root for Isaac Sim early in the import process."""
@@ -610,24 +616,41 @@ class NavigationEnv(IsaacEnv):
         else:
             self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
             self.target_pos[:, 0, 1] = -24.
-            self.target_pos[:, 0, 2] = 2.          
+            self.target_pos[:, 0, 2] = 2.            
 
 
     def _reset_idx(self, env_ids: torch.Tensor):
         self.drone._reset_idx(env_ids, self.training)
         self.reset_target(env_ids)
         if (self.training):
-            masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
-            shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
-            mask_indices = np.random.randint(0, masks.size(0), size=env_ids.size(0))
-            selected_masks = masks[mask_indices].unsqueeze(1)
-            selected_shifts = shifts[mask_indices].unsqueeze(1)
-
-            # generate random positions with improved height range
-            pos = 48. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-24.)
+            # Create balanced spawn distribution including middle area
+            # 40% chance for edge spawns, 60% chance for middle area spawns
+            edge_prob = 0.4
+            middle_prob = 0.6
+            
+            pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
+            
+            for i in range(env_ids.size(0)):
+                if torch.rand(1, device=self.device) < edge_prob:
+                    # Edge spawns (original logic)
+                    masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
+                    shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
+                    mask_idx = np.random.randint(0, masks.size(0))
+                    mask = masks[mask_idx].unsqueeze(0)
+                    shift = shifts[mask_idx].unsqueeze(0)
+                    
+                    spawn_pos = 48. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-24.)
+                    spawn_pos = spawn_pos * mask + shift
+                    pos[i] = spawn_pos
+                else:
+                    # Middle area spawns (new logic)
+                    # Generate spawns in the center area (-12, 12) × (-12, 12)
+                    spawn_pos = 24. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-12.)
+                    pos[i] = spawn_pos
+            
+            # Set heights for all spawns
             heights = 3.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (5.0 - 3.0)  # Lowered spawn height range to force obstacle navigation
-            pos[:, 0, 2] = heights# height
-            pos = pos * selected_masks + selected_shifts
+            pos[:, 0, 2] = heights
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
             # pos[:, 0, 0] = (env_ids / self.num_envs - 0.5) * 32.
