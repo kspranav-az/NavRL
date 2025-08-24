@@ -8,28 +8,28 @@ headless: False  # Make sure visual rendering is enabled
 device: "cuda:0"
 seed: 101
 
-# Total Training Length
-max_frame_num: 25000  # Changed from 12e8 to 25000 for 5-minute training
-eval_interval: 50      # Changed from 1000 to 50 for more frequent evaluation
-save_interval: 50      # Changed from 1000 to 50 for more frequent saving
+# Total Training Length - Adjusted for 1 hour training
+max_frame_num: 1000000  # Changed to 1M frames for ~1 hour training
+eval_interval: 5000      # Evaluate every 5000 frames (every ~3 minutes)
+save_interval: 10000     # Save every 10000 frames (every ~6 minutes)
 
-# Training Environment
+# Training Environment - Scaled up for 500 drones
 env:
-  num_envs: 12         # Changed from 20 to 12 drones (faster processing)
-  max_episode_length: 200  # Changed from 500 to 200 for much faster episodes
-  env_spacing: 20.0    # Changed from 25.0 to 20.0 for better performance
-  num_obstacles: 20    # Changed from 40 to 20 static obstacles (faster)
+  num_envs: 500          # Changed to 500 drones for comprehensive training
+  max_episode_length: 200  # Keep 200 for reasonable episode length
+  env_spacing: 25.0      # Increased back to 25.0 for 500 drones spacing
+  num_obstacles: 40      # Increased back to 40 static obstacles for challenge
   hover_assistance: False
 
 env_dyn:
-  num_obstacles: 30    # Changed from 80 to 30 dynamic obstacles (faster)
+  num_obstacles: 80      # Increased back to 80 dynamic obstacles for challenge
   vel_range: [0.5, 1.5]
   local_range: [5.0, 5.0, 4.5]
 
 viewer:
-  eye: [12., 12., 12.]   # Changed from [15., 15., 15.] for better performance
+  eye: [15., 15., 15.]   # Increased back for better view of 500 drones
   lookat: [0., 0., 2.]
-  resolution: [960, 540]  # Changed from [1280, 720] for faster rendering
+  resolution: [1280, 720]  # Increased back to full resolution for monitoring
   
 logger:
   backend: tensorboard  # or "csv"
