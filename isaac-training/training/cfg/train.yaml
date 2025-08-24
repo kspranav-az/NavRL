@@ -8,30 +8,30 @@ headless: False  # Make sure visual rendering is enabled
 device: "cuda:0"
 seed: 101
 
-# Total Training Length - Adjusted for 1 hour training
-max_frame_num: 1000000  # Changed to 1M frames for ~1 hour training
-eval_interval: 5000      # Evaluate every 5000 frames (every ~3 minutes)
-save_interval: 10000     # Save every 10000 frames (every ~6 minutes)
+# Total Training Length - Adjusted for 10 hours training
+max_frame_num: 10000000  # Changed to 10M frames for ~10 hours training
+eval_interval: 50000      # Evaluate every 50K frames (every ~30 minutes)
+save_interval: 100000     # Save every 100K frames (every ~1 hour)
 
 # Training Environment - Scaled up for 500 drones
 env:
-  num_envs: 500          # Changed to 500 drones for comprehensive training
+  num_envs: 500          # Keep 500 drones for comprehensive training
   max_episode_length: 200  # Keep 200 for reasonable episode length
-  env_spacing: 25.0      # Increased back to 25.0 for 500 drones spacing
-  num_obstacles: 40      # Increased back to 40 static obstacles for challenge
+  env_spacing: 25.0      # Keep 25.0 for 500 drones spacing
+  num_obstacles: 40      # Keep 40 static obstacles for challenge
   hover_assistance: False
 
 env_dyn:
-  num_obstacles: 80      # Increased back to 80 dynamic obstacles for challenge
+  num_obstacles: 60      # Reduced from 80 to 60 dynamic obstacles for better performance
   vel_range: [0.5, 1.5]
   local_range: [5.0, 5.0, 4.5]
 
 viewer:
-  eye: [15., 15., 15.]   # Increased back for better view of 500 drones
+  eye: [15., 15., 15.]   # Keep for better view of 500 drones
   lookat: [0., 0., 2.]
-  resolution: [1280, 720]  # Increased back to full resolution for monitoring
+  resolution: [1280, 720]  # Keep full resolution for monitoring
   
 logger:
   backend: tensorboard  # or "csv"
   log_dir: logs
-  exp_name: NavRL
+  exp_name: NavRL_10hours

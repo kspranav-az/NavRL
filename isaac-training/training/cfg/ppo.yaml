@@ -1,18 +1,18 @@
 algo:
   feature_extractor:
-    learning_rate: 1e-3  # Adjusted back to 1e-3 for stable learning over 1 hour
+    learning_rate: 5e-4  # Reduced to 5e-4 for very stable learning over 10 hours
     dyn_obs_num: 5       # Keep this for 5 closest obstacles
   
   actor:
-    learning_rate: 1e-3  # Adjusted back to 1e-3 for stable learning over 1 hour
+    learning_rate: 5e-4  # Reduced to 5e-4 for very stable learning over 10 hours
     clip_ratio: 0.1
     action_limit: 2.0 # m/s
   
   critic:
-    learning_rate: 1e-3  # Adjusted back to 1e-3 for stable learning over 1 hour
+    learning_rate: 5e-4  # Reduced to 5e-4 for very stable learning over 10 hours
     clip_ratio: 0.1
   
-  entropy_loss_coefficient: 5e-3  # Adjusted back to 5e-3 for balanced exploration
-  training_frame_num: 64   # Increased back to 64 for better learning stability
-  training_epoch_num: 2    # Increased back to 2 for better policy updates
-  num_minibatches: 8       # Increased back to 8 for better gradient estimates
+  entropy_loss_coefficient: 3e-3  # Reduced to 3e-3 for more focused learning over 10 hours
+  training_frame_num: 128  # Increased to 128 for very stable learning
+  training_epoch_num: 4    # Increased to 4 for thorough policy updates
+  num_minibatches: 16      # Increased to 16 for very stable gradient estimates
