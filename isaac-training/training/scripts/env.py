@@ -139,7 +139,7 @@ class NavigationEnv(IsaacEnv):
         ray_caster_cfg = RayCasterCfg(
             prim_path="/World/envs/env_.*/Hummingbird_0/base_link",
             offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 0.0)),
-            attach_yaw_only=True,
+            ray_alignment="yaw",
             # attach_yaw_only=False,
             pattern_cfg=patterns.BpearlPatternCfg(
                 horizontal_res=self.lidar_hres, # horizontal default is set to 10
@@ -854,6 +854,11 @@ class NavigationEnv(IsaacEnv):
         static_collision = einops.reduce(self.lidar_scan, "n 1 w h -> n 1", "max") >  (self.lidar_range - 0.3) # 0.3 collision radius
         collision = static_collision | dynamic_collision
         
+        # Compute termination-related booleans before reward shaping that uses them
+        reach_goal = (distance.squeeze(-1) < 0.5)
+        below_bound = self.drone.pos[..., 2] < 0.2
+        above_bound = self.drone.pos[..., 2] > 4.
+
         # Final reward calculation
         if (self.cfg.env_dyn.num_obstacles != 0):
             self.reward = reward_vel + 1. + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 8.0
@@ -868,9 +873,6 @@ class NavigationEnv(IsaacEnv):
         self.reward[collision] -= collision_penalty
 
         # Terminate Conditions
-        reach_goal = (distance.squeeze(-1) < 0.5)
-        below_bound = self.drone.pos[..., 2] < 0.2
-        above_bound = self.drone.pos[..., 2] > 4.
         self.terminated = below_bound | above_bound | collision
         self.truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1) # progress buf is to track the step number
         self.reward[self.truncated] -= timeout_penalty
