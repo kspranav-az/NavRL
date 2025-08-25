@@ -8,30 +8,30 @@ headless: False  # Make sure visual rendering is enabled
 device: "cuda:0"
 seed: 101
 
-# Total Training Length - Optimized for stability and resource utilization
-max_frame_num: 10000000  # Keep 10M frames for ~10 hours training
-eval_interval: 50000      # Evaluate every 50K frames (every ~30 minutes)
-save_interval: 100000     # Save every 100K frames (every ~1 hour)
+# Total Training Length - Optimized for extended training duration
+max_frame_num: 120000000  # Doubled from 60M to 120M frames for extended training
+eval_interval: 300000     # Evaluate every 300K frames (every ~18 minutes)
+save_interval: 600000     # Save every 600K frames (every ~36 minutes)
 
-# Training Environment - Scaled back for stability while maintaining performance
+# Training Environment - Optimized for 6-hour training duration
 env:
-  num_envs: 750          # Reduced from 1000 to 750 for stability
-  max_episode_length: 250  # Reduced from 300 to 250 for better stability
-  env_spacing: 22.0      # Increased spacing slightly for better separation
-  num_obstacles: 60      # Reduced from 80 to 60 for stability
+  num_envs: 750          # Keep 750 drones for stability
+  max_episode_length: 400  # Increased from 250 to 400 for longer episodes
+  env_spacing: 22.0      # Keep spacing for stability
+  num_obstacles: 60      # Keep obstacles for stability
   hover_assistance: False
 
 env_dyn:
-  num_obstacles: 90      # Reduced from 120 to 90 for stability
-  vel_range: [0.5, 1.8]  # Reduced max velocity from 2.0 to 1.8
-  local_range: [6.0, 6.0, 5.0]  # Reduced from 8.0 to 6.0 for stability
+  num_obstacles: 90      # Keep dynamic obstacles for stability
+  vel_range: [0.5, 1.8]  # Keep velocity range for stability
+  local_range: [6.0, 6.0, 5.0]  # Keep local range for stability
 
 viewer:
-  eye: [18., 18., 18.]   # Reduced from 20.0 to 18.0 for better performance
+  eye: [18., 18., 18.]   # Keep view distance for performance
   lookat: [0., 0., 2.]
-  resolution: [1600, 900]  # Reduced from 1920x1080 to 1600x900 for stability
+  resolution: [1600, 900]  # Keep resolution for stability
   
 logger:
   backend: tensorboard  # or "csv"
   log_dir: logs
-  exp_name: NavRL_750drones_stable
+  exp_name: NavRL_750drones_extended
