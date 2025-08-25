@@ -125,6 +125,8 @@ class NavigationEnv(IsaacEnv):
         self.lidar_vbeams = cfg.sensor.lidar_vbeams
         self.lidar_hres = cfg.sensor.lidar_hres
         self.lidar_hbeams = int(360/self.lidar_hres)
+        # Optional horizontal FOV in degrees for forward-cone scanning (e.g., 90)
+        self.lidar_hfov_deg = getattr(cfg.sensor, "lidar_hfov_deg", 120)
 
         super().__init__(cfg, cfg.headless)
         
@@ -144,7 +146,7 @@ class NavigationEnv(IsaacEnv):
                 vertical_ray_angles=torch.linspace(*self.lidar_vfov, self.lidar_vbeams) 
             ),
             debug_vis=False,
-            mesh_prim_paths=["/World/ground"],
+            mesh_prim_paths=["/World"],
             # mesh_prim_paths=["/World"],
         )
         self.lidar = RayCaster(ray_caster_cfg)
@@ -708,6 +710,21 @@ class NavigationEnv(IsaacEnv):
             .reshape(self.num_envs, 1, *self.lidar_resolution)
         ) # lidar scan store the data that is range - distance and it is in lidar's local frame
 
+        # Apply horizontal FOV mask to simulate stereo-like forward cone
+        # Keep only central +/- lidar_hfov_deg/2 around forward; mask out the rest
+        if 0 < self.lidar_hfov_deg < 360:
+            keep_beams = max(1, int(self.lidar_hfov_deg / self.lidar_hres))
+            center_idx = self.lidar_hbeams // 2  # assume center corresponds to forward
+            start = max(0, center_idx - keep_beams // 2)
+            end = min(self.lidar_hbeams, start + keep_beams)
+            # Build mask: True for beams to keep
+            h_indices = torch.arange(self.lidar_hbeams, device=self.device)
+            keep_mask = (h_indices >= start) & (h_indices < end)
+            # Broadcast to (N, 1, H, V)
+            keep_mask = keep_mask.view(1, 1, self.lidar_hbeams, 1)
+            # Set out-of-FOV returns to 0 (no obstacle info)
+            self.lidar_scan = torch.where(keep_mask, self.lidar_scan, torch.zeros_like(self.lidar_scan))
+
         # Optional render for LiDAR
         if self._should_render(0):
             self.debug_draw.clear()
@@ -842,9 +859,13 @@ class NavigationEnv(IsaacEnv):
             self.reward = reward_vel + 1. + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 8.0
         else:
             self.reward = reward_vel + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 8.0
-
-        # Terminal reward
-        # self.reward[collision] -= 50. # collision
+ 
+        # Terminal and outcome-based reward shaping
+        goal_bonus = 50.0
+        collision_penalty = 50.0
+        timeout_penalty = 5.0
+        self.reward[reach_goal] += goal_bonus
+        self.reward[collision] -= collision_penalty
 
         # Terminate Conditions
         reach_goal = (distance.squeeze(-1) < 0.5)
@@ -852,6 +873,7 @@ class NavigationEnv(IsaacEnv):
         above_bound = self.drone.pos[..., 2] > 4.
         self.terminated = below_bound | above_bound | collision
         self.truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1) # progress buf is to track the step number
+        self.reward[self.truncated] -= timeout_penalty
 
         # update previous velocity for smoothness calculation in the next ieteration
         self.prev_drone_vel_w = self.drone.vel_w[..., :3].clone()

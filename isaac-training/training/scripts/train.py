@@ -84,6 +84,15 @@ def main(cfg):
         # Log Info
         info = {"env_frames": collector._frames, "rollout_fps": collector._fps}
 
+        # Apply entropy decay based on frames
+        if hasattr(cfg.algo, "entropy_schedule"):
+            start = float(cfg.algo.entropy_schedule.start)
+            end = float(cfg.algo.entropy_schedule.end)
+            frames = float(cfg.algo.entropy_schedule.frames)
+            frac = min(max(collector._frames / max(frames, 1.0), 0.0), 1.0)
+            cfg.algo.entropy_loss_coefficient = start + (end - start) * frac
+            info["train/entropy_coef"] = cfg.algo.entropy_loss_coefficient
+
         # Train Policy
         train_loss_stats = policy.train(data)
         info.update(train_loss_stats) # log training loss info

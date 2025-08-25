@@ -3,7 +3,21 @@ drone:
 
 sensor:
   lidar_range: 4.
-  lidar_vfov: [-10, 20.] # degree
-  lidar_vbeams: 4 # number of vertical beams
-  lidar_hres: 10. # degree
+  # Match vertical FOV to camera (~50 deg total)
+  lidar_vfov: [-25., 25.] # degree
+  lidar_vbeams: 6 # increase vertical beams for finer vertical sampling
+  # Horizontal resolution and FOV to mimic camera (~73 deg horizontal FOV)
+  lidar_hres: 1.0 # degree per beam (360 beams around, FOV mask applied)
+  lidar_hfov_deg: 73
+
+# Stereo camera physical specs (for future integration)
+stereo:
+  cmos_size_inch: "1/4"
+  focal_length_mm: 2.6
+  aov_deg:
+    diagonal: 83
+    horizontal: 73
+    vertical: 50
+  distortion: "<1%"
+  baseline_mm: 60
   

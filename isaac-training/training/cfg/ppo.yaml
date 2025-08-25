@@ -15,7 +15,14 @@ algo:
     clip_ratio: 0.1
     hidden_size: 256     # Keep 256 for stability
   
-  entropy_loss_coefficient: 5e-3  # Increased to 5e-3 for more exploration (slower convergence)
+  # Increased to encourage more exploration; consider decaying later in training
+  entropy_loss_coefficient: 1.0e-2
+  # Entropy decay schedule
+  entropy_schedule:
+    start: 1.0e-2   # initial entropy coef
+    end: 3.0e-3     # final entropy coef
+    frames: 30000000  # decay over first 30M frames
+  
   training_frame_num: 64   # Reduced from 128 to 64 for slower policy updates
   training_epoch_num: 4    # Increased from 2 to 4 for better policy convergence
   num_minibatches: 12      # Increased from 8 to 12 for better data diversity
