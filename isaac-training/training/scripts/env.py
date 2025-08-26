@@ -906,10 +906,12 @@ class NavigationEnv(IsaacEnv):
         speed = torch.norm(self.root_state[..., 7:10], dim=-1, keepdim=True)
         not_goal = (~reach_goal).unsqueeze(-1)
         if hasattr(self, "still_counter"):
-            inc = (speed < 0.05) & not_goal
-            self.still_counter = torch.where(inc, self.still_counter + 1, torch.zeros_like(self.still_counter))
+            inc = (speed < 0.05) & not_goal  # (N,1,1)
+            # Squeeze to (N,1) to match reward and still_counter shapes
+            inc2 = inc.squeeze(-1)
+            self.still_counter = torch.where(inc2, self.still_counter + 1, torch.zeros_like(self.still_counter))
             # Base small penalty for idling
-            self.reward[inc] -= 0.05
+            self.reward[inc2] -= 0.05
             # Stronger penalty and termination when idling on or very near static obstacles
             perch_on_obs = (self.still_counter > 30) & static_collision
             self.terminated = self.terminated | perch_on_obs
