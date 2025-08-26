@@ -8,30 +8,80 @@ headless: False  # Make sure visual rendering is enabled
 device: "cuda:0"
 seed: 101
 
-# Total Training Length - Optimized for extended training duration
-max_frame_num: 120000000  # Doubled from 60M to 120M frames for extended training
-eval_interval: 300000     # Evaluate every 300K frames (every ~18 minutes)
-save_interval: 600000     # Save every 600K frames (every ~36 minutes)
+# Total Training Length - Optimized for 50M frames
+max_frame_num: 50000000  # Set to 50M frames as requested
+eval_interval: 250000     # Evaluate every 250K frames (every ~15 minutes)
+save_interval: 500000     # Save every 500K frames (every ~30 minutes)
 
-# Training Environment - Optimized for 6-hour training duration
+# Training Environment - Optimized for stability and performance
 env:
-  num_envs: 500          # Reduced from 750 to 500 to fit in VRAM only
-  max_episode_length: 400  # Keep 400 for longer episodes
+  num_envs: 500          # Keep 500 for VRAM efficiency
+  max_episode_length: 300  # Reduced from 400 for better FPS
   env_spacing: 22.0      # Keep spacing for stability
-  num_obstacles: 50      # Reduced from 60 to 50 for VRAM efficiency
+  num_obstacles: 50      # Keep obstacles for VRAM efficiency
   hover_assistance: False
 
 env_dyn:
-  num_obstacles: 70      # Reduced from 90 to 70 for VRAM efficiency
+  num_obstacles: 70      # Keep dynamic obstacles for VRAM efficiency
   vel_range: [0.5, 1.8]  # Keep velocity range for stability
   local_range: [6.0, 6.0, 5.0]  # Keep local range for stability
 
 viewer:
   eye: [18., 18., 18.]   # Keep view distance for performance
   lookat: [0., 0., 2.]
-  resolution: [1280, 720]  # Reduced from 1600x900 to 1280x720 for VRAM efficiency
+  resolution: [1280, 720]  # Keep resolution for VRAM efficiency
   
 logger:
   backend: tensorboard  # or "csv"
   log_dir: logs
-  exp_name: NavRL_500drones_vram_only
+  exp_name: NavRL_500drones_50M_stable
+
+algo:
+  feature_extractor:
+    learning_rate: 2e-4  # Reduced from 3e-4 for more stable learning
+    dyn_obs_num: 6       # Keep 6 for stability
+    hidden_size: 256      # Keep 256 for stability
+  
+  actor:
+    learning_rate: 2e-4  # Reduced from 3e-4 for more stable learning
+    clip_ratio: 0.1
+    action_limit: 2.2    # Keep 2.2 for stability
+    hidden_size: 256     # Keep 256 for stability
+  
+  critic:
+    learning_rate: 2e-4  # Reduced from 3e-4 for more stable learning
+    clip_ratio: 0.1
+    hidden_size: 256     # Keep 256 for stability
+  
+  # Increased to encourage more exploration; consider decaying later in training
+  entropy_loss_coefficient: 1.0e-2
+  # Entropy decay schedule - slower decay for more stable learning
+  entropy_schedule:
+    start: 1.0e-2   # initial entropy coef
+    end: 5.0e-3     # final entropy coef (increased from 3e-3)
+    frames: 60000000  # decay over first 60M frames (doubled from 30M)
+  
+  training_frame_num: 64   # Keep 64 for stability
+  training_epoch_num: 4    # Keep 4 for stability
+  num_minibatches: 12      # Keep 12 for stability
+
+sensor:
+  lidar_range: 4.
+  # Match vertical FOV to camera (~50 deg total)
+  lidar_vfov: [-25., 25.] # degree
+  lidar_vbeams: 4 # Keep 4 for VRAM efficiency
+  # Horizontal resolution and FOV to mimic camera (~73 deg horizontal FOV)
+  lidar_hres: 1.5 # Reduced from 2.0 for better FPS/resolution balance (240 beams around)
+  lidar_hfov_deg: 73
+
+# GPU buffers - Optimized for better physics performance while staying in VRAM
+gpu_max_rigid_contact_count: 786432       # Increased from 524K to 768K for better physics
+gpu_max_rigid_patch_count: 25165824       # Increased from 16M to 24M for better physics
+gpu_found_lost_pairs_capacity: 4194304    # Keep 4M for VRAM efficiency
+gpu_found_lost_aggregate_pairs_capacity: 33554432  # Keep 32M for VRAM efficiency
+gpu_total_aggregate_pairs_capacity: 4194304        # Keep 4M for VRAM efficiency
+gpu_max_soft_body_contacts: 1048576       # Keep 1M for VRAM efficiency
+gpu_max_particle_contacts: 1048576        # Keep 1M for VRAM efficiency
+gpu_heap_capacity: 100663296              # Increased from 64M to 96M for better physics
+gpu_temp_buffer_capacity: 16777216        # Keep 16M for VRAM efficiency
+gpu_max_num_partitions: 8                 # Keep at 8 for stability
