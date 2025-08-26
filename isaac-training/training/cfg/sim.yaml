@@ -15,14 +15,14 @@ sim:
   enable_stabilization: True
   enable_scene_query_support: true
 
-  # GPU buffers - Optimized for stability while maintaining good performance
-  gpu_max_rigid_contact_count: 1048576      # Reduced from 2M to 1M for stability
-  gpu_max_rigid_patch_count: 33554432       # Reduced from 64M to 32M for stability
-  gpu_found_lost_pairs_capacity: 8388608    # Reduced from 16M to 8M for stability
-  gpu_found_lost_aggregate_pairs_capacity: 67108864  # Reduced from 128M to 64M for stability
-  gpu_total_aggregate_pairs_capacity: 8388608        # Reduced from 16M to 8M for stability
-  gpu_max_soft_body_contacts: 2097152       # Reduced from 4M to 2M for stability
-  gpu_max_particle_contacts: 2097152        # Reduced from 4M to 2M for stability
-  gpu_heap_capacity: 134217728              # Reduced from 256M to 128M for stability
-  gpu_temp_buffer_capacity: 33554432        # Reduced from 64M to 32M for stability
-  gpu_max_num_partitions: 8                 # Reduced back to 8 for stability
+  # GPU buffers - Optimized for VRAM-only usage (no shared memory)
+  gpu_max_rigid_contact_count: 524288       # Reduced from 1M to 512K for VRAM efficiency
+  gpu_max_rigid_patch_count: 16777216       # Reduced from 32M to 16M for VRAM efficiency
+  gpu_found_lost_pairs_capacity: 4194304    # Reduced from 8M to 4M for VRAM efficiency
+  gpu_found_lost_aggregate_pairs_capacity: 33554432  # Reduced from 64M to 32M for VRAM efficiency
+  gpu_total_aggregate_pairs_capacity: 4194304        # Reduced from 8M to 4M for VRAM efficiency
+  gpu_max_soft_body_contacts: 1048576       # Reduced from 2M to 1M for VRAM efficiency
+  gpu_max_particle_contacts: 1048576        # Reduced from 2M to 1M for VRAM efficiency
+  gpu_heap_capacity: 67108864               # Reduced from 128M to 64M for VRAM efficiency
+  gpu_temp_buffer_capacity: 16777216        # Reduced from 32M to 16M for VRAM efficiency
+  gpu_max_num_partitions: 8                 # Keep at 8 for stability

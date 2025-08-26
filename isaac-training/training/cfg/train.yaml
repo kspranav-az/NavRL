@@ -15,23 +15,23 @@ save_interval: 600000     # Save every 600K frames (every ~36 minutes)
 
 # Training Environment - Optimized for 6-hour training duration
 env:
-  num_envs: 750          # Keep 750 drones for stability
-  max_episode_length: 400  # Increased from 250 to 400 for longer episodes
+  num_envs: 500          # Reduced from 750 to 500 to fit in VRAM only
+  max_episode_length: 400  # Keep 400 for longer episodes
   env_spacing: 22.0      # Keep spacing for stability
-  num_obstacles: 60      # Keep obstacles for stability
+  num_obstacles: 50      # Reduced from 60 to 50 for VRAM efficiency
   hover_assistance: False
 
 env_dyn:
-  num_obstacles: 90      # Keep dynamic obstacles for stability
+  num_obstacles: 70      # Reduced from 90 to 70 for VRAM efficiency
   vel_range: [0.5, 1.8]  # Keep velocity range for stability
   local_range: [6.0, 6.0, 5.0]  # Keep local range for stability
 
 viewer:
   eye: [18., 18., 18.]   # Keep view distance for performance
   lookat: [0., 0., 2.]
-  resolution: [1600, 900]  # Keep resolution for stability
+  resolution: [1280, 720]  # Reduced from 1600x900 to 1280x720 for VRAM efficiency
   
 logger:
   backend: tensorboard  # or "csv"
   log_dir: logs
-  exp_name: NavRL_750drones_extended
+  exp_name: NavRL_500drones_vram_only
