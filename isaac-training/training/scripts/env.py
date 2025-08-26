@@ -128,6 +128,14 @@ class NavigationEnv(IsaacEnv):
         # Optional horizontal FOV in degrees for forward-cone scanning (e.g., 90)
         self.lidar_hfov_deg = getattr(cfg.sensor, "lidar_hfov_deg", 120)
 
+        # Curriculum settings (optional in cfg.curriculum)
+        cur = getattr(cfg, "curriculum", None)
+        self.cur_enabled = bool(getattr(cur, "enabled", True)) if cur is not None else True
+        self.cur_min_dist = float(getattr(cur, "min_goal_dist", 6.0)) if cur is not None else 6.0
+        self.cur_max_dist = float(getattr(cur, "max_goal_dist", 28.0)) if cur is not None else 28.0
+        self.cur_resets = int(getattr(cur, "warmup_resets", 20000)) if cur is not None else 20000
+        self.total_resets = 0
+
         super().__init__(cfg, cfg.headless)
         
         # Drone Initialization
@@ -578,43 +586,38 @@ class NavigationEnv(IsaacEnv):
         self.info = info_spec.zero()
 
     
-    def reset_target(self, env_ids: torch.Tensor):
+    def reset_target(self, env_ids: torch.Tensor, spawn_pos: torch.Tensor | None = None):
         if (self.training):
-            # Create balanced target distribution including middle area
-            # 40% chance for edge targets, 60% chance for middle area targets
-            edge_prob = 0.4
-            middle_prob = 0.6
-            
+            # Curriculum: sample target near spawn and increase allowed distance over resets
             target_pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
-            
-            for i in range(env_ids.size(0)):
-                if torch.rand(1, device=self.device) < edge_prob:
-                    # Edge targets (original logic)
-                    masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
-                    shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
-                    mask_idx = np.random.randint(0, masks.size(0))
-                    mask = masks[mask_idx].unsqueeze(0)
-                    shift = shifts[mask_idx].unsqueeze(0)
-                    
-                    pos = 48. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-24.)
-                    pos = pos * mask + shift
-                    target_pos[i] = pos
-                else:
-                    # Middle area targets (new logic)
-                    # Generate targets in the center area (-12, 12) × (-12, 12)
-                    pos = 24. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-12.)
-                    target_pos[i] = pos
-            
-            # Set heights for all targets
-            heights = 2.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (4.0 - 2.0)  # Lowered height range to force obstacle navigation
-            target_pos[:, 0, 2] = heights
-            
-            # apply target pos
-            self.target_pos[env_ids] = target_pos
+            # Progress in [0,1]
+            progress = 0.0
+            if self.cur_enabled:
+                progress = float(min(1.0, self.total_resets / max(1, self.cur_resets)))
+            curr_max = self.cur_min_dist + (self.cur_max_dist - self.cur_min_dist) * progress
+            curr_min = self.cur_min_dist
 
-            # self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
-            # self.target_pos[:, 0, 1] = 24.
-            # self.target_pos[:, 0, 2] = 2.    
+            for i in range(env_ids.size(0)):
+                # choose a reference center for direction: middle of map
+                if spawn_pos is not None:
+                    s = spawn_pos[i, 0]
+                else:
+                    # fallback: center
+                    s = torch.zeros(3, device=self.device)
+                # sample a random direction in XY
+                theta = torch.empty(1, device=self.device).uniform_(0, 2 * torch.pi)
+                dir_xy = torch.stack([torch.cos(theta).squeeze(0), torch.sin(theta).squeeze(0)], dim=0)
+                dist = torch.empty(1, device=self.device).uniform_(curr_min, curr_max).item()
+                tgt_xy = s[:2] + dir_xy * dist
+                # clamp into map bounds (slight margin)
+                tgt_xy = torch.clamp(tgt_xy, min=-self.map_range[0] + 1.0, max=self.map_range[0] - 1.0)
+                # height between 2 and 4
+                tz = 2.0 + torch.rand(1, device=self.device).item() * (4.0 - 2.0)
+                target_pos[i, 0, 0] = tgt_xy[0]
+                target_pos[i, 0, 1] = tgt_xy[1]
+                target_pos[i, 0, 2] = tz
+
+            self.target_pos[env_ids] = target_pos
         else:
             self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
             self.target_pos[:, 0, 1] = -24.
@@ -623,47 +626,56 @@ class NavigationEnv(IsaacEnv):
 
     def _reset_idx(self, env_ids: torch.Tensor):
         self.drone._reset_idx(env_ids, self.training)
-        self.reset_target(env_ids)
         if (self.training):
-            # Create balanced spawn distribution including middle area
-            # 40% chance for edge spawns, 60% chance for middle area spawns
-            edge_prob = 0.4
-            middle_prob = 0.6
-            
+            # Edge-only spawns with obstacle clearance and safe height
             pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
             
+            clearance_dyn = 3.0  # meters
+            min_spawn_z = 3.5
+            max_spawn_z = 5.0
+            rand = torch.rand(env_ids.size(0), device=self.device)
             for i in range(env_ids.size(0)):
-                if torch.rand(1, device=self.device) < edge_prob:
-                    # Edge spawns (original logic)
-                    masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
-                    shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
-                    mask_idx = np.random.randint(0, masks.size(0))
-                    mask = masks[mask_idx].unsqueeze(0)
-                    shift = shifts[mask_idx].unsqueeze(0)
-                    
-                    spawn_pos = 48. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-24.)
-                    spawn_pos = spawn_pos * mask + shift
-                    pos[i] = spawn_pos
-                else:
-                    # Middle area spawns (new logic)
-                    # Generate spawns in the center area (-12, 12) × (-12, 12)
-                    spawn_pos = 24. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-12.)
-                    pos[i] = spawn_pos
-            
-            # Set heights for all spawns
-            heights = 3.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (5.0 - 3.0)  # Lowered spawn height range to force obstacle navigation
-            pos[:, 0, 2] = heights
-            
-            # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
-            # pos[:, 0, 0] = (env_ids / self.num_envs - 0.5) * 32.
-            # pos[:, 0, 1] = -24.
-            # pos[:, 0, 2] = 2.
+                attempts = 0
+                while attempts < 50:
+                    # Choose a random edge: 0:+x, 1:-x, 2:+y, 3:-y
+                    side = torch.randint(0, 4, (1,), device=self.device).item()
+                    if side == 0:
+                        sx = self.map_range[0]
+                        sy = torch.empty(1, device=self.device).uniform_(-self.map_range[1], self.map_range[1]).item()
+                    elif side == 1:
+                        sx = -self.map_range[0]
+                        sy = torch.empty(1, device=self.device).uniform_(-self.map_range[1], self.map_range[1]).item()
+                    elif side == 2:
+                        sy = self.map_range[1]
+                        sx = torch.empty(1, device=self.device).uniform_(-self.map_range[0], self.map_range[0]).item()
+                    else:
+                        sy = -self.map_range[1]
+                        sx = torch.empty(1, device=self.device).uniform_(-self.map_range[0], self.map_range[0]).item()
+                    sz = (min_spawn_z + (max_spawn_z - min_spawn_z) * torch.rand(1, device=self.device)).item()
+                    candidate = torch.tensor([[sx, sy, sz]], dtype=torch.float, device=self.device)
+                    # Dynamic obstacle clearance (2D distance)
+                    if self.cfg.env_dyn.num_obstacles > 0:
+                        dyn_xy = self.dyn_obs_state[:, :2]
+                        d2 = torch.norm(dyn_xy - candidate[0, :2], dim=1)
+                        if torch.any(d2 < clearance_dyn):
+                            attempts += 1
+                            continue
+                    pos[i, 0] = candidate
+                    break
+                if attempts >= 50:
+                    # Fallback: place at chosen edge without clearance
+                    pos[i, 0] = candidate
+ 
+            # Set curriculum-based targets using spawn positions
+            self.reset_target(env_ids, spawn_pos=pos)
+            # Increment curriculum counter
+            self.total_resets += int(env_ids.numel())
         else:
             pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
             pos[:, 0, 0] = (env_ids / self.num_envs - 0.5) * 32.
             pos[:, 0, 1] = 24.
             pos[:, 0, 2] = 2.
-        
+ 
         # Coordinate change: after reset, the drone's target direction should be changed
         self.target_dir[env_ids] = self.target_pos[env_ids] - pos
 
@@ -680,6 +692,14 @@ class NavigationEnv(IsaacEnv):
         self.height_range[env_ids, 0, 0] = torch.min(pos[:, 0, 2], self.target_pos[env_ids, 0, 2])
         self.height_range[env_ids, 0, 1] = torch.max(pos[:, 0, 2], self.target_pos[env_ids, 0, 2])
 
+        # Reset per-episode counters
+        if not hasattr(self, "reset_step_counter"):
+            self.reset_step_counter = torch.zeros(self.num_envs, 1, dtype=torch.long, device=self.device)
+        if not hasattr(self, "still_counter"):
+            self.still_counter = torch.zeros(self.num_envs, 1, dtype=torch.long, device=self.device)
+        self.reset_step_counter[env_ids] = 0
+        self.still_counter[env_ids] = 0
+
         self.stats[env_ids] = 0.  
         
     def _pre_sim_step(self, tensordict: TensorDictBase):
@@ -688,8 +708,9 @@ class NavigationEnv(IsaacEnv):
         # Apply the actions to the drone (hover assistance is now handled by the transform)
         self.drone.apply_action(actions)
         
-        # Height monitoring removed to prevent indexing issues
-        # Drones will rely on the policy to maintain stable flight 
+        # Increment per-episode step counters
+        if hasattr(self, "reset_step_counter"):
+            self.reset_step_counter += 1
 
     def _post_sim_step(self, tensordict: TensorDictBase):
         if (self.cfg.env_dyn.num_obstacles != 0):
@@ -876,6 +897,19 @@ class NavigationEnv(IsaacEnv):
         self.terminated = below_bound | above_bound | collision
         self.truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1) # progress buf is to track the step number
         self.reward[self.truncated] -= timeout_penalty
+
+        # Perch/stillness detection: penalize and terminate if nearly stationary, especially on obstacles
+        speed = torch.norm(self.root_state[..., 7:10], dim=-1, keepdim=True)
+        not_goal = (~reach_goal).unsqueeze(-1)
+        if hasattr(self, "still_counter"):
+            inc = (speed < 0.05) & not_goal
+            self.still_counter = torch.where(inc, self.still_counter + 1, torch.zeros_like(self.still_counter))
+            # Base small penalty for idling
+            self.reward[inc] -= 0.05
+            # Stronger penalty and termination when idling on or very near static obstacles
+            perch_on_obs = (self.still_counter > 30) & static_collision
+            self.terminated = self.terminated | perch_on_obs
+            self.reward[perch_on_obs] -= 5.0
 
         # update previous velocity for smoothness calculation in the next ieteration
         self.prev_drone_vel_w = self.drone.vel_w[..., :3].clone()
