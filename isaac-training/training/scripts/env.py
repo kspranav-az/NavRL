@@ -898,6 +898,10 @@ class NavigationEnv(IsaacEnv):
         self.truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1) # progress buf is to track the step number
         self.reward[self.truncated] -= timeout_penalty
 
+        # Penalize falling to ground strongly
+        fall_penalty = 10.0
+        self.reward[below_bound] -= fall_penalty
+
         # Perch/stillness detection: penalize and terminate if nearly stationary, especially on obstacles
         speed = torch.norm(self.root_state[..., 7:10], dim=-1, keepdim=True)
         not_goal = (~reach_goal).unsqueeze(-1)

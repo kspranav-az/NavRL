@@ -15,64 +15,27 @@ save_interval: 500000     # Save every 500K frames (every ~30 minutes)
 
 # Training Environment - Optimized for stability and performance
 env:
-  num_envs: 500          # Keep 500 for VRAM efficiency
-  max_episode_length: 300  # Reduced from 400 for better FPS
+  num_envs: 450          # Reduced from 500 to 450 (~10% less VRAM)
+  max_episode_length: 300  # Keep 300 for better FPS
   env_spacing: 22.0      # Keep spacing for stability
-  num_obstacles: 50      # Keep obstacles for VRAM efficiency
+  num_obstacles: 45      # Reduced from 50 to 45 for VRAM efficiency
   hover_assistance: False
 
 env_dyn:
-  num_obstacles: 70      # Keep dynamic obstacles for VRAM efficiency
+  num_obstacles: 60      # Reduced from 70 to 60 for VRAM efficiency
   vel_range: [0.5, 1.8]  # Keep velocity range for stability
   local_range: [6.0, 6.0, 5.0]  # Keep local range for stability
 
 viewer:
-  eye: [18., 18., 18.]   # Keep view distance for performance
+  eye: [18., 18., 18.]
   lookat: [0., 0., 2.]
-  resolution: [1280, 720]  # Keep resolution for VRAM efficiency
+  resolution: [1280, 720]
   
 logger:
   backend: tensorboard  # or "csv"
   log_dir: logs
-  exp_name: NavRL_500drones_50M_stable
+  exp_name: NavRL_450drones_50M_vram10less
 
-algo:
-  feature_extractor:
-    learning_rate: 2e-4  # Reduced from 3e-4 for more stable learning
-    dyn_obs_num: 6       # Keep 6 for stability
-    hidden_size: 256      # Keep 256 for stability
-  
-  actor:
-    learning_rate: 2e-4  # Reduced from 3e-4 for more stable learning
-    clip_ratio: 0.1
-    action_limit: 2.2    # Keep 2.2 for stability
-    hidden_size: 256     # Keep 256 for stability
-  
-  critic:
-    learning_rate: 2e-4  # Reduced from 3e-4 for more stable learning
-    clip_ratio: 0.1
-    hidden_size: 256     # Keep 256 for stability
-  
-  # Increased to encourage more exploration; consider decaying later in training
-  entropy_loss_coefficient: 1.0e-2
-  # Entropy decay schedule - slower decay for more stable learning
-  entropy_schedule:
-    start: 1.0e-2   # initial entropy coef
-    end: 5.0e-3     # final entropy coef (increased from 3e-3)
-    frames: 60000000  # decay over first 60M frames (doubled from 30M)
-  
-  training_frame_num: 64   # Keep 64 for stability
-  training_epoch_num: 4    # Keep 4 for stability
-  num_minibatches: 12      # Keep 12 for stability
-
-sensor:
-  lidar_range: 4.
-  # Match vertical FOV to camera (~50 deg total)
-  lidar_vfov: [-25., 25.] # degree
-  lidar_vbeams: 4 # Keep 4 for VRAM efficiency
-  # Horizontal resolution and FOV to mimic camera (~73 deg horizontal FOV)
-  lidar_hres: 1.5 # Reduced from 2.0 for better FPS/resolution balance (240 beams around)
-  lidar_hfov_deg: 73
 
 curriculum:
   enabled: true
