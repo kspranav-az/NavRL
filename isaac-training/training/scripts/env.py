@@ -618,22 +618,10 @@ class NavigationEnv(IsaacEnv):
             self.target_pos[:, 0, 1] = -24.
             self.target_pos[:, 0, 2] = 2.
 
-        # New logic for opposite goal
+        # Set the target to the center of the environment
         for i in range(env_ids.size(0)):
-            spawn_pos = self.drone.pos[env_ids[i], 0, :3]
-            target_pos_i = self.target_pos[env_ids[i], 0, :3]
-
-            # Determine the quadrant of the spawn position
-            x_spawn = spawn_pos[0]
-            y_spawn = spawn_pos[1]
-
-            # Calculate the opposite position
-            opposite_x = -x_spawn
-            opposite_y = -y_spawn
-
-            # Update the target position with the opposite coordinates, keeping the height
-            self.target_pos[env_ids[i], 0, 0] = opposite_x
-            self.target_pos[env_ids[i], 0, 1] = opposite_y
+            self.target_pos[env_ids[i], 0, 0] = 0.0
+            self.target_pos[env_ids[i], 0, 1] = 0.0
 
             
 
