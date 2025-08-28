@@ -736,7 +736,7 @@ class NavigationEnv(IsaacEnv):
 
         # ---------Network Input II: Drone's internal states---------
         # a. distance info in horizontal and vertical plane
-        rpos = self.target_pos - self.root_state[..., :3]        
+        rpos = (self.target_pos - self.root_state[..., :3]).squeeze(1)        
         distance = rpos.norm(dim=-1, keepdim=True) # start to goal distance
         distance_2d = rpos[..., :2].norm(dim=-1, keepdim=True)
         distance_z = rpos[..., 2].unsqueeze(-1)
