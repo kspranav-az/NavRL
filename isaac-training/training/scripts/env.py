@@ -158,7 +158,6 @@ class NavigationEnv(IsaacEnv):
             
             # Coordinate change: add target direction variable
             self.target_dir = torch.zeros(self.num_envs, 1, 3)
-            self.prev_distance = torch.zeros(self.num_envs, 1, device=self.device)
             self.height_range = torch.zeros(self.num_envs, 1, 2)
             self.prev_drone_vel_w = torch.zeros(self.num_envs, 1 , 3)
             # self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
@@ -736,7 +735,7 @@ class NavigationEnv(IsaacEnv):
 
         # ---------Network Input II: Drone's internal states---------
         # a. distance info in horizontal and vertical plane
-        rpos = (self.target_pos - self.root_state[..., :3]).squeeze(1)        
+        rpos = self.target_pos - self.root_state[..., :3]        
         distance = rpos.norm(dim=-1, keepdim=True) # start to goal distance
         distance_2d = rpos[..., :2].norm(dim=-1, keepdim=True)
         distance_z = rpos[..., 2].unsqueeze(-1)
@@ -835,11 +834,7 @@ class NavigationEnv(IsaacEnv):
 
         # c. velocity reward for goal direction
         vel_direction = rpos / distance.clamp_min(1e-6)
-        reward_vel = (self.drone.vel_w[..., :3] * vel_direction).sum(-1) * 2.0 # Increased reward for moving towards goal
-        
-        # Add a penalty for not reducing distance to goal
-        progress_reward = (self.prev_distance - distance).squeeze(-1)
-        reward_vel += progress_reward * 5.0 # Reward for making progress
+        reward_vel = (self.drone.vel_w[..., :3] * vel_direction).sum(-1)#.clip(max=2.0)
         
         # d. smoothness reward for action smoothness
         penalty_smooth = (self.drone.vel_w[..., :3] - self.prev_drone_vel_w).norm(dim=-1)
@@ -861,7 +856,7 @@ class NavigationEnv(IsaacEnv):
             self.reward = reward_vel + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 8.0
 
         # Terminal reward
-        self.reward[collision] -= 100. # collision penalty
+        # self.reward[collision] -= 50. # collision
 
         # Terminate Conditions
         reach_goal = (distance.squeeze(-1) < 0.5)
@@ -872,7 +867,6 @@ class NavigationEnv(IsaacEnv):
 
         # update previous velocity for smoothness calculation in the next ieteration
         self.prev_drone_vel_w = self.drone.vel_w[..., :3].clone()
-        self.prev_distance = distance.clone()
 
         # # -----------------Training Stats-----------------
         self.stats["return"] += self.reward
