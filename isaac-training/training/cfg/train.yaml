@@ -22,7 +22,7 @@ env:
   hover_assistance: False
 
 env_dyn:
-  num_obstacles: 90      # Keep dynamic obstacles for stability
+  num_obstacles: 10      # Reduced for simpler training
   vel_range: [0.5, 1.8]  # Keep velocity range for stability
   local_range: [6.0, 6.0, 5.0]  # Keep local range for stability
 

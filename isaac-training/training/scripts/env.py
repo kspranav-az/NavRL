@@ -158,6 +158,7 @@ class NavigationEnv(IsaacEnv):
             
             # Coordinate change: add target direction variable
             self.target_dir = torch.zeros(self.num_envs, 1, 3)
+            self.prev_distance = torch.zeros(self.num_envs, 1, device=self.device)
             self.height_range = torch.zeros(self.num_envs, 1, 2)
             self.prev_drone_vel_w = torch.zeros(self.num_envs, 1 , 3)
             # self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
@@ -616,7 +617,26 @@ class NavigationEnv(IsaacEnv):
         else:
             self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
             self.target_pos[:, 0, 1] = -24.
-            self.target_pos[:, 0, 2] = 2.            
+            self.target_pos[:, 0, 2] = 2.
+
+        # New logic for opposite goal
+        for i in range(env_ids.size(0)):
+            spawn_pos = self.drone.pos[env_ids[i], 0, :3]
+            target_pos_i = self.target_pos[env_ids[i], 0, :3]
+
+            # Determine the quadrant of the spawn position
+            x_spawn = spawn_pos[0]
+            y_spawn = spawn_pos[1]
+
+            # Calculate the opposite position
+            opposite_x = -x_spawn
+            opposite_y = -y_spawn
+
+            # Update the target position with the opposite coordinates, keeping the height
+            self.target_pos[env_ids[i], 0, 0] = opposite_x
+            self.target_pos[env_ids[i], 0, 1] = opposite_y
+
+            
 
 
     def _reset_idx(self, env_ids: torch.Tensor):
@@ -625,28 +645,21 @@ class NavigationEnv(IsaacEnv):
         if (self.training):
             # Create balanced spawn distribution including middle area
             # 40% chance for edge spawns, 60% chance for middle area spawns
-            edge_prob = 0.4
-            middle_prob = 0.6
+            edge_prob = 1.0 # Always spawn on edge
             
             pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
             
             for i in range(env_ids.size(0)):
-                if torch.rand(1, device=self.device) < edge_prob:
-                    # Edge spawns (original logic)
-                    masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
-                    shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
-                    mask_idx = np.random.randint(0, masks.size(0))
-                    mask = masks[mask_idx].unsqueeze(0)
-                    shift = shifts[mask_idx].unsqueeze(0)
-                    
-                    spawn_pos = 48. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-24.)
-                    spawn_pos = spawn_pos * mask + shift
-                    pos[i] = spawn_pos
-                else:
-                    # Middle area spawns (new logic)
-                    # Generate spawns in the center area (-12, 12) × (-12, 12)
-                    spawn_pos = 24. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-12.)
-                    pos[i] = spawn_pos
+                # Edge spawns (original logic)
+                masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
+                shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
+                mask_idx = np.random.randint(0, masks.size(0))
+                mask = masks[mask_idx].unsqueeze(0)
+                shift = shifts[mask_idx].unsqueeze(0)
+                
+                spawn_pos = 48. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-24.)
+                spawn_pos = spawn_pos * mask + shift
+                pos[i] = spawn_pos
             
             # Set heights for all spawns
             heights = 3.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (5.0 - 3.0)  # Lowered spawn height range to force obstacle navigation
@@ -822,7 +835,11 @@ class NavigationEnv(IsaacEnv):
 
         # c. velocity reward for goal direction
         vel_direction = rpos / distance.clamp_min(1e-6)
-        reward_vel = (self.drone.vel_w[..., :3] * vel_direction).sum(-1)#.clip(max=2.0)
+        reward_vel = (self.drone.vel_w[..., :3] * vel_direction).sum(-1) * 2.0 # Increased reward for moving towards goal
+        
+        # Add a penalty for not reducing distance to goal
+        progress_reward = (self.prev_distance - distance).squeeze(-1)
+        reward_vel += progress_reward * 5.0 # Reward for making progress
         
         # d. smoothness reward for action smoothness
         penalty_smooth = (self.drone.vel_w[..., :3] - self.prev_drone_vel_w).norm(dim=-1)
@@ -844,7 +861,7 @@ class NavigationEnv(IsaacEnv):
             self.reward = reward_vel + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 8.0
 
         # Terminal reward
-        # self.reward[collision] -= 50. # collision
+        self.reward[collision] -= 100. # collision penalty
 
         # Terminate Conditions
         reach_goal = (distance.squeeze(-1) < 0.5)
@@ -855,6 +872,7 @@ class NavigationEnv(IsaacEnv):
 
         # update previous velocity for smoothness calculation in the next ieteration
         self.prev_drone_vel_w = self.drone.vel_w[..., :3].clone()
+        self.prev_distance = distance.clone()
 
         # # -----------------Training Stats-----------------
         self.stats["return"] += self.reward
