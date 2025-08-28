@@ -7,7 +7,7 @@ sensor:
   lidar_vfov: [-25., 25.] # degree
   lidar_vbeams: 4 # Reduced from 6 to 4 for VRAM efficiency
   # Horizontal resolution and FOV to mimic camera (~73 deg horizontal FOV)
-  lidar_hres: 1.6  # from 1.5/2.0 to 1.6 for small VRAM savings
+  lidar_hres: 2.0 # Increased from 1.0 to 2.0 for VRAM efficiency (180 beams around)
   lidar_hfov_deg: 73
 
 # Stereo camera physical specs (for future integration)
