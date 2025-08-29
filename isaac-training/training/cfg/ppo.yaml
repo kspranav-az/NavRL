@@ -15,7 +15,7 @@ algo:
     clip_ratio: 0.1
     hidden_size: 256     # Keep 256 for stability
   
-  entropy_loss_coefficient: 5e-3  # Increased to 5e-3 for more exploration (slower convergence)
+  entropy_loss_coefficient: 5e-2  # Drastically increased for more exploration
   training_frame_num: 64   # Reduced from 128 to 64 for slower policy updates
   training_epoch_num: 4    # Increased from 2 to 4 for better policy convergence
   num_minibatches: 12      # Increased from 8 to 12 for better data diversity
