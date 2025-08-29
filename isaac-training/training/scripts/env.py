@@ -644,7 +644,7 @@ class NavigationEnv(IsaacEnv):
                 mask = masks[mask_idx].unsqueeze(0)
                 shift = shifts[mask_idx].unsqueeze(0)
                 
-                spawn_pos = 48. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-24.)
+                spawn_pos = 96. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-48.)
                 spawn_pos = spawn_pos * mask + shift
                 pos[i] = spawn_pos
             
@@ -830,7 +830,7 @@ class NavigationEnv(IsaacEnv):
         # e. height penalty reward for flying unnessarily high or low
         penalty_height = torch.zeros(self.num_envs, 1, device=self.cfg.device)
         penalty_height[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)] = ( (self.drone.pos[..., 2] - self.height_range[..., 1] - 0.2)**2 )[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)]
-        penalty_height[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.2)] = ( (self.height_range[..., 0] - 0.2 - self.drone.pos[..., 2])**2 )[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.2)]
+        penalty_height[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)] = ( (self.height_range[..., 0] - 0.1 - self.drone.pos[..., 2])**2 )[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)]
 
 
         # f. Collision condition with its penalty
@@ -839,17 +839,17 @@ class NavigationEnv(IsaacEnv):
         
         # Final reward calculation
         if (self.cfg.env_dyn.num_obstacles != 0):
-            self.reward = reward_vel + 1. + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 8.0
+            self.reward = reward_vel + 1. + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
         else:
-            self.reward = reward_vel + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 8.0
+            self.reward = reward_vel + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
 
         # Terminal reward
         # self.reward[collision] -= 50. # collision
 
         # Terminate Conditions
         reach_goal = (distance.squeeze(-1) < 0.5)
-        below_bound = self.drone.pos[..., 2] < 0.2
-        above_bound = self.drone.pos[..., 2] > 4.
+        below_bound = self.drone.pos[..., 2] < 0.1
+        above_bound = self.drone.pos[..., 2] > 5.
         self.terminated = below_bound | above_bound | collision
         self.truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1) # progress buf is to track the step number
 
