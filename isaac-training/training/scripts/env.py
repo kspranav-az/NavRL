@@ -679,7 +679,7 @@ class NavigationEnv(IsaacEnv):
         self.height_range[env_ids, 0, 1] = torch.max(pos[:, 0, 2], self.target_pos[env_ids, 0, 2])
 
         # Check for immediate collision after spawning
-        self.lidar.update(self.dt) # Update lidar to get current collision state
+        self._compute_state_and_obs() # Ensure lidar_scan is computed
         static_collision = einops.reduce(self.lidar_scan, "n 1 w h -> n 1", "max") > (self.lidar_range - 0.3)
         # Assuming dynamic_collision is already computed or can be accessed
         # If not, you might need to call _compute_state_and_obs or a similar function
