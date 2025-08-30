@@ -268,7 +268,7 @@ class NavigationEnv(IsaacEnv):
                     "obstacles": HfDiscreteObstaclesTerrainCfg(
                         horizontal_scale=0.1,
                         vertical_scale=0.1,
-                        border_width=0.0,
+                        border_width=10.0,
                         num_obstacles=self.cfg.env.num_obstacles,
                         obstacle_height_mode="choice",  # Fixed: use "choice" instead of "range"
                         obstacle_width_range=(2.0, 4.0),  # Increased from (0.4, 1.1) to (2.0, 4.0) for larger obstacles
@@ -649,7 +649,7 @@ class NavigationEnv(IsaacEnv):
                 pos[i] = spawn_pos
             
             # Set heights for all spawns
-            heights = 3.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (5.0 - 3.0)  # Lowered spawn height range to force obstacle navigation
+            heights = 7.5 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (9.5 - 7.5)  # Increased spawn height range to avoid spawning in obstacles
             pos[:, 0, 2] = heights
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
@@ -677,6 +677,20 @@ class NavigationEnv(IsaacEnv):
         self.prev_drone_vel_w[env_ids] = 0.
         self.height_range[env_ids, 0, 0] = torch.min(pos[:, 0, 2], self.target_pos[env_ids, 0, 2])
         self.height_range[env_ids, 0, 1] = torch.max(pos[:, 0, 2], self.target_pos[env_ids, 0, 2])
+
+        # Check for immediate collision after spawning
+        self.lidar.update(self.dt) # Update lidar to get current collision state
+        static_collision = einops.reduce(self.lidar_scan, "n 1 w h -> n 1", "max") > (self.lidar_range - 0.3)
+        # Assuming dynamic_collision is already computed or can be accessed
+        # If not, you might need to call _compute_state_and_obs or a similar function
+        # For now, let's assume dynamic_collision is available or 0 if no dynamic obstacles
+        initial_collision = static_collision # | dynamic_collision (if dynamic_collision is relevant here)
+
+        # Terminate instances that spawn in collision and apply a penalty
+        if torch.any(initial_collision):
+            colliding_env_ids = env_ids[initial_collision.squeeze(-1)]
+            self.terminated[colliding_env_ids] = True
+            self.reward[colliding_env_ids] -= 100.0 # Apply a harsh penalty
 
         self.stats[env_ids] = 0.  
         
