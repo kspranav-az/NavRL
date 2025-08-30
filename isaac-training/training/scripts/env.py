@@ -853,16 +853,16 @@ class NavigationEnv(IsaacEnv):
         
         # Final reward calculation
         if (self.cfg.env_dyn.num_obstacles != 0):
-            self.reward = reward_vel * 2.0 + 1. + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
+            self.reward = reward_vel + 1. + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
         else:
-            self.reward = reward_vel * 2.0 + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
+            self.reward = reward_vel + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
 
         # Terminal reward
-        self.reward[reach_goal] += 100. # goal reached
         # self.reward[collision] -= 50. # collision
 
         # Terminate Conditions
         reach_goal = (distance.squeeze(-1) < 0.5)
+        self.reward[reach_goal] += 100. # goal reached
         below_bound = self.drone.pos[..., 2] < 0.1
         above_bound = self.drone.pos[..., 2] > 5.
         self.terminated = below_bound | above_bound | collision
