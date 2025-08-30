@@ -246,7 +246,7 @@ class NavigationEnv(IsaacEnv):
                     print(f"[NavigationEnv] Failed to create ground reference: {e}")
 
         # Increased map range for better drone separation and obstacle placement
-        self.map_range = [25.0, 25.0, 8.0]  # Increased height from 6.0 to 8.0 to accommodate taller obstacles
+        self.map_range = [30.0, 30.0, 15.0]  # Increased height from 6.0 to 8.0 to accommodate taller obstacles
 
         terrain_cfg = TerrainImporterCfg(
             num_envs=self.num_envs,
@@ -271,8 +271,8 @@ class NavigationEnv(IsaacEnv):
                         border_width=10.0,
                         num_obstacles=self.cfg.env.num_obstacles,
                         obstacle_height_mode="choice",  # Fixed: use "choice" instead of "range"
-                        obstacle_width_range=(2.0, 4.0),  # Increased from (0.4, 1.1) to (2.0, 4.0) for larger obstacles
-                        obstacle_height_range=(3.0, 7.0),  # Increased from (2.0, 6.0) to (3.0, 7.0) to block drone flight paths
+                        obstacle_width_range=(3.0, 6.0),  # Increased from (0.4, 1.1) to (2.0, 4.0) for larger obstacles
+                        obstacle_height_range=(5.0, 15.0),  # Increased from (2.0, 6.0) to (3.0, 7.0) to block drone flight paths
                         platform_width=0.0,
                         # Removed obstacle_height_probability as it doesn't exist in IsaacLab
                     ),
@@ -313,8 +313,8 @@ class NavigationEnv(IsaacEnv):
         N_w = 4 # number of width intervals between [0, 1]
         N_h = 2 # number of height: current only support binary
         max_obs_width = 3.0  # Increased from 1.0 to 3.0 for larger dynamic obstacles
-        self.max_obs_3d_height = 5.0  # Increased from 3.0 to 5.0 to block drone flight paths
-        self.max_obs_2d_height = 10.0  # Increased from 8.0 to 10.0 to create proper barriers
+        self.max_obs_3d_height = 15.0  # Increased from 3.0 to 5.0 to block drone flight paths
+        self.max_obs_2d_height = 20.0  # Increased from 8.0 to 10.0 to create proper barriers
         self.dyn_obs_width_res = max_obs_width/float(N_w)
         dyn_obs_category_num = N_w * N_h
         # Ensure we have at least 1 obstacle per category, and handle cases where num_obstacles < category_num
@@ -589,7 +589,7 @@ class NavigationEnv(IsaacEnv):
                 if torch.rand(1, device=self.device) < edge_prob:
                     # Edge targets (original logic)
                     masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
-                    shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
+                    shifts = torch.tensor([[0., 30., 0.], [0., -30., 0.], [30., 0., 0.], [-30., 0., 0.]], dtype=torch.float, device=self.device)
                     mask_idx = np.random.randint(0, masks.size(0))
                     mask = masks[mask_idx].unsqueeze(0)
                     shift = shifts[mask_idx].unsqueeze(0)
@@ -600,11 +600,11 @@ class NavigationEnv(IsaacEnv):
                 else:
                     # Middle area targets (new logic)
                     # Generate targets in the center area (-12, 12) × (-12, 12)
-                    pos = 24. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-12.)
+                    pos = 30. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-15.)
                     target_pos[i] = pos
             
             # Set heights for all targets
-            heights = 2.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (4.0 - 2.0)  # Lowered height range to force obstacle navigation
+            heights = 5.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (15.0 - 5.0)  # Increased height range to accommodate taller obstacles
             target_pos[:, 0, 2] = heights
             
             # apply target pos
@@ -644,12 +644,12 @@ class NavigationEnv(IsaacEnv):
                 mask = masks[mask_idx].unsqueeze(0)
                 shift = shifts[mask_idx].unsqueeze(0)
                 
-                spawn_pos = 96. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-48.)
+                spawn_pos = 60. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-30.)
                 spawn_pos = spawn_pos * mask + shift
                 pos[i] = spawn_pos
             
             # Set heights for all spawns
-            heights = 7.5 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (9.5 - 7.5)  # Increased spawn height range to avoid spawning in obstacles
+            heights = 15.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (20.0 - 15.0)  # Increased spawn height range to avoid spawning in obstacles
             pos[:, 0, 2] = heights
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
@@ -836,15 +836,16 @@ class NavigationEnv(IsaacEnv):
 
         # c. velocity reward for goal direction
         vel_direction = rpos / distance.clamp_min(1e-6)
-        reward_vel = (self.drone.vel_w[..., :3] * vel_direction).sum(-1)#.clip(max=2.0)
+        reward_vel = (self.drone.vel_w[..., :3] * vel_direction).sum(-1) * 2.0 # Increased reward for moving towards goal
+        reward_forward = self.drone.vel_w[..., 0].abs() + self.drone.vel_w[..., 1].abs() # Reward for general forward/sideways movement
         
         # d. smoothness reward for action smoothness
         penalty_smooth = (self.drone.vel_w[..., :3] - self.prev_drone_vel_w).norm(dim=-1)
         
         # e. height penalty reward for flying unnessarily high or low
         penalty_height = torch.zeros(self.num_envs, 1, device=self.cfg.device)
-        penalty_height[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)] = ( (self.drone.pos[..., 2] - self.height_range[..., 1] - 0.2)**2 )[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)]
-        penalty_height[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)] = ( (self.height_range[..., 0] - 0.1 - self.drone.pos[..., 2])**2 )[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)]
+        penalty_height[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.5)] = ( (self.drone.pos[..., 2] - self.height_range[..., 1] - 0.5)**2 )[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.5)]
+        penalty_height[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.5)] = ( (self.height_range[..., 0] - 0.5 - self.drone.pos[..., 2])**2 )[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.5)]
 
 
         # f. Collision condition with its penalty
@@ -853,9 +854,9 @@ class NavigationEnv(IsaacEnv):
         
         # Final reward calculation
         if (self.cfg.env_dyn.num_obstacles != 0):
-            self.reward = reward_vel + 1. + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
+            self.reward = reward_vel + reward_forward * 0.5 + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
         else:
-            self.reward = reward_vel + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
+            self.reward = reward_vel + reward_forward * 0.5 + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
 
         # Terminal reward
         # self.reward[collision] -= 50. # collision
@@ -863,9 +864,11 @@ class NavigationEnv(IsaacEnv):
         # Terminate Conditions
         reach_goal = (distance.squeeze(-1) < 0.5)
         self.reward[reach_goal] += 100. # goal reached
-        below_bound = self.drone.pos[..., 2] < 0.1
-        above_bound = self.drone.pos[..., 2] > 5.
+        below_bound = self.drone.pos[..., 2] < 0.5
+        above_bound = self.drone.pos[..., 2] > 20.
         self.terminated = below_bound | above_bound | collision
+        self.reward[below_bound] -= 500. # Heavy penalty for going below bound
+        self.reward[above_bound] -= 500. # Heavy penalty for going above bound
         self.truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1) # progress buf is to track the step number
 
         # update previous velocity for smoothness calculation in the next ieteration
