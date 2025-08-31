@@ -246,7 +246,7 @@ class NavigationEnv(IsaacEnv):
                     print(f"[NavigationEnv] Failed to create ground reference: {e}")
 
         # Increased map range for better drone separation and obstacle placement
-        self.map_range = [30.0, 30.0, 15.0]  # Increased height from 6.0 to 8.0 to accommodate taller obstacles
+        self.map_range = [35.0, 35.0, 15.0]  # Increased map range to prevent drones from spawning outside the terrain
 
         terrain_cfg = TerrainImporterCfg(
             num_envs=self.num_envs,
@@ -256,7 +256,7 @@ class NavigationEnv(IsaacEnv):
             terrain_generator=TerrainGeneratorCfg(
                 seed=0,
                 size=(self.map_range[0]*2, self.map_range[1]*2), 
-                border_width=5.0,
+                border_width=0.0,
                 num_rows=1, 
                 num_cols=1, 
                 horizontal_scale=0.1,
@@ -271,8 +271,8 @@ class NavigationEnv(IsaacEnv):
                         border_width=10.0,
                         num_obstacles=self.cfg.env.num_obstacles,
                         obstacle_height_mode="choice",  # Fixed: use "choice" instead of "range"
-                        obstacle_width_range=(3.0, 6.0),  # Increased from (0.4, 1.1) to (2.0, 4.0) for larger obstacles
-                        obstacle_height_range=(5.0, 15.0),  # Increased from (2.0, 6.0) to (3.0, 7.0) to block drone flight paths
+                        obstacle_width_range=(1.0, 2.0),  # Made thinner and more discrete
+                        obstacle_height_range=(5.0, 15.0),
                         platform_width=0.0,
                         # Removed obstacle_height_probability as it doesn't exist in IsaacLab
                     ),
@@ -598,9 +598,15 @@ class NavigationEnv(IsaacEnv):
                     pos = pos * mask + shift
                     target_pos[i] = pos
                 else:
-                    # Middle area targets (new logic)
-                    # Generate targets in the center area (-12, 12) × (-12, 12)
-                    pos = 30. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-15.)
+                    # Perimeter targets
+                    masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
+                    shifts = torch.tensor([[0., 34., 0.], [0., -34., 0.], [34., 0., 0.], [-34., 0., 0.]], dtype=torch.float, device=self.device)
+                    mask_idx = np.random.randint(0, masks.size(0))
+                    mask = masks[mask_idx].unsqueeze(0)
+                    shift = shifts[mask_idx].unsqueeze(0)
+                    
+                    pos = 70. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-35.)
+                    pos = pos * mask + shift
                     target_pos[i] = pos
             
             # Set heights for all targets
@@ -619,9 +625,7 @@ class NavigationEnv(IsaacEnv):
             self.target_pos[:, 0, 2] = 2.
 
         # Set the target to the center of the environment
-        for i in range(env_ids.size(0)):
-            self.target_pos[env_ids[i], 0, 0] = 0.0
-            self.target_pos[env_ids[i], 0, 1] = 0.0
+
 
             
 
@@ -632,21 +636,13 @@ class NavigationEnv(IsaacEnv):
         if (self.training):
             # Create balanced spawn distribution including middle area
             # 40% chance for edge spawns, 60% chance for middle area spawns
-            edge_prob = 1.0 # Always spawn on edge
+            edge_prob = 0.0 # Always spawn in center
             
             pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
             
-            for i in range(env_ids.size(0)):
-                # Edge spawns (original logic)
-                masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
-                shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
-                mask_idx = np.random.randint(0, masks.size(0))
-                mask = masks[mask_idx].unsqueeze(0)
-                shift = shifts[mask_idx].unsqueeze(0)
-                
-                spawn_pos = 60. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-30.)
-                spawn_pos = spawn_pos * mask + shift
-                pos[i] = spawn_pos
+            # Center spawns
+            spawn_pos = 70. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-35.)
+            pos = spawn_pos
             
             # Set heights for all spawns
             heights = 15.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (20.0 - 15.0)  # Increased spawn height range to avoid spawning in obstacles
