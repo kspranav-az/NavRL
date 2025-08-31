@@ -271,8 +271,8 @@ class NavigationEnv(IsaacEnv):
                         border_width=10.0,
                         num_obstacles=self.cfg.env.num_obstacles,
                         obstacle_height_mode="choice",  # Fixed: use "choice" instead of "range"
-                        obstacle_width_range=(2.0, 4.0),  # Increased from (0.4, 1.1) to (2.0, 4.0) for larger obstacles
-                        obstacle_height_range=(3.0, 7.0),  # Increased from (2.0, 6.0) to (3.0, 7.0) to block drone flight paths
+                        obstacle_width_range=(0.5, 1.5),  # Decreased width for thinner obstacles
+                        obstacle_height_range=(22.0, 25.0),  # Increased height to be more than drone's max flying height
                         platform_width=0.0,
                         # Removed obstacle_height_probability as it doesn't exist in IsaacLab
                     ),
@@ -312,9 +312,9 @@ class NavigationEnv(IsaacEnv):
         # [[0, 0.5], [0.5, inf]] we want to distinguish 3D obstacles and 2d obstacles
         N_w = 4 # number of width intervals between [0, 1]
         N_h = 2 # number of height: current only support binary
-        max_obs_width = 3.0  # Increased from 1.0 to 3.0 for larger dynamic obstacles
-        self.max_obs_3d_height = 5.0  # Increased from 3.0 to 5.0 to block drone flight paths
-        self.max_obs_2d_height = 10.0  # Increased from 8.0 to 10.0 to create proper barriers
+        max_obs_width = 1.0  # Decreased width for thinner dynamic obstacles
+        self.max_obs_3d_height = 22.0  # Increased height to be more than drone's max flying height
+        self.max_obs_2d_height = 25.0  # Increased height to be more than drone's max flying height
         self.dyn_obs_width_res = max_obs_width/float(N_w)
         dyn_obs_category_num = N_w * N_h
         # Ensure we have at least 1 obstacle per category, and handle cases where num_obstacles < category_num
@@ -375,7 +375,7 @@ class NavigationEnv(IsaacEnv):
                         continue
                     
                     if (category_idx < cuboid_category_num):
-                        oz = np.random.uniform(low=2.0, high=self.map_range[2] - 3.0)  # Adjusted for new obstacle heights
+                        oz = np.random.uniform(low=2.0, high=self.max_obs_3d_height - 3.0)  # Adjusted for new obstacle heights
                     else:
                         oz = self.max_obs_2d_height/2. # half of the height
                     
