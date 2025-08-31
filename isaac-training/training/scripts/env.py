@@ -247,7 +247,7 @@ class NavigationEnv(IsaacEnv):
                     print(f"[NavigationEnv] Failed to create ground reference: {e}")
 
         # Increased map range for better drone separation and obstacle placement
-        self.map_range = [25.0, 25.0, 8.0]  # Increased height from 6.0 to 8.0 to accommodate taller obstacles
+        self.map_range = [50.0, 50.0, 8.0]  # Increased map range for static obstacles
 
         terrain_cfg = TerrainImporterCfg(
             num_envs=self.num_envs,
@@ -633,11 +633,9 @@ class NavigationEnv(IsaacEnv):
         if (self.training):
             # Create balanced spawn distribution including middle area
             # 40% chance for edge spawns, 60% chance for middle area spawns
-            # Center spawns
-            pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
-            # Set heights for all spawns
-            heights = 5.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (25.0 - 5.0) # Increased spawn height range
-            pos[:, 0, 2] = heights
+            # Center spawns with slight random offset to prevent stacking
+            pos = (torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) - 0.5) * 2.0 # Random offset between -1.0 and 1.0 for x and y
+            pos[:, 0, 2] = 5.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (25.0 - 5.0) # Increased spawn height range
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
             # pos[:, 0, 0] = (env_ids / self.num_envs - 0.5) * 32.
