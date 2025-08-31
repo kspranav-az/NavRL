@@ -130,7 +130,8 @@ class NavigationEnv(IsaacEnv):
         
         # Drone Initialization
         self.drone.initialize()
-        self.init_vels = torch.zeros_like(self.drone.get_velocities())
+        # Initialize with a small random velocity to prevent hovering
+        self.init_vels = (torch.rand_like(self.drone.get_velocities()) - 0.5) * 0.5
 
 
         # LiDAR Intialization
