@@ -684,12 +684,13 @@ class NavigationEnv(IsaacEnv):
         # Assuming dynamic_collision is already computed or can be accessed
         # If not, you might need to call _compute_state_and_obs or a similar function
         # For now, let's assume dynamic_collision is available or 0 if no dynamic obstacles
-        # Get collision status only for the environments being reset
-        initial_collision_for_current_envs = static_collision[env_ids].squeeze(-1)
+        initial_collision = static_collision # | dynamic_collision (if dynamic_collision is relevant here)
 
         # Terminate instances that spawn in collision and apply a penalty
-        if torch.any(initial_collision_for_current_envs):
-            colliding_env_ids = env_ids[initial_collision_for_current_envs]
+        # Filter initial_collision to only the environments being reset
+        initial_collision_filtered = initial_collision[env_ids]
+        if torch.any(initial_collision_filtered):
+            colliding_env_ids = env_ids[initial_collision_filtered.squeeze(-1)]
             self.terminated[colliding_env_ids] = True
             self.reward[colliding_env_ids] -= 100.0 # Apply a harsh penalty
 
