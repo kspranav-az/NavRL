@@ -633,9 +633,9 @@ class NavigationEnv(IsaacEnv):
             # Create balanced spawn distribution including middle area
             # 40% chance for edge spawns, 60% chance for middle area spawns
             # Center spawns
-            pos = 70. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-35.)
+            pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
             # Set heights for all spawns
-            heights = 15.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (20.0 - 15.0) # Increased spawn height range
+            heights = 5.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (25.0 - 5.0) # Increased spawn height range
             pos[:, 0, 2] = heights
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
