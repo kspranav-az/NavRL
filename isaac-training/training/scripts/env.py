@@ -632,24 +632,10 @@ class NavigationEnv(IsaacEnv):
         if (self.training):
             # Create balanced spawn distribution including middle area
             # 40% chance for edge spawns, 60% chance for middle area spawns
-            edge_prob = 1.0 # Always spawn on edge
-            
-            pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
-            
-            for i in range(env_ids.size(0)):
-                # Edge spawns (original logic)
-                masks = torch.tensor([[1., 0., 1.], [1., 0., 1.], [0., 1., 1.], [0., 1., 1.]], dtype=torch.float, device=self.device)
-                shifts = torch.tensor([[0., 24., 0.], [0., -24., 0.], [24., 0., 0.], [-24., 0., 0.]], dtype=torch.float, device=self.device)
-                mask_idx = np.random.randint(0, masks.size(0))
-                mask = masks[mask_idx].unsqueeze(0)
-                shift = shifts[mask_idx].unsqueeze(0)
-                
-                spawn_pos = 96. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-48.)
-                spawn_pos = spawn_pos * mask + shift
-                pos[i] = spawn_pos
-            
+            # Center spawns
+            pos = 70. * torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) + (-35.)
             # Set heights for all spawns
-            heights = 7.5 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (9.5 - 7.5)  # Increased spawn height range to avoid spawning in obstacles
+            heights = 15.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (20.0 - 15.0) # Increased spawn height range
             pos[:, 0, 2] = heights
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
