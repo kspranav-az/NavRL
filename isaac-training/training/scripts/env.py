@@ -620,8 +620,8 @@ class NavigationEnv(IsaacEnv):
 
         # Set the target to the center of the environment
         for i in range(env_ids.size(0)):
-            self.target_pos[env_ids[i], 0, 0] = 0.0
-            self.target_pos[env_ids[i], 0, 1] = 0.0
+            self.target_pos[env_ids[i], 0, 0] = 70. * torch.rand(1, dtype=torch.float, device=self.device) - 35.
+            self.target_pos[env_ids[i], 0, 1] = 70. * torch.rand(1, dtype=torch.float, device=self.device) - 35.
 
             
 
@@ -840,13 +840,17 @@ class NavigationEnv(IsaacEnv):
         collision = static_collision | dynamic_collision
         
         # Final reward calculation
+        # Proximity reward: increases as the drone gets closer to the target
+        # Using an inverse relationship with distance, clamped to avoid division by zero and very large rewards
+        proximity_reward = 1.0 / (distance.squeeze(-1).clamp(min=0.1)) # Reward for getting closer to target
+
         if (self.cfg.env_dyn.num_obstacles != 0):
-            self.reward = reward_vel + 1. + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
+            self.reward = reward_vel + 1. + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0 + proximity_reward * 5.0 # Increased weight for proximity
         else:
-            self.reward = reward_vel + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0
+            self.reward = reward_vel + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0 + proximity_reward * 5.0 # Increased weight for proximity
 
         # Terminal reward
-        # self.reward[collision] -= 50. # collision
+        self.reward[collision] -= 50. # collision penalty
 
         # Terminate Conditions
         reach_goal = (distance.squeeze(-1) < 0.5)
