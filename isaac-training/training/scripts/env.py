@@ -795,9 +795,11 @@ class NavigationEnv(IsaacEnv):
         penalty_smooth = (self.drone.vel_w[..., :3] - self.prev_drone_vel_w).norm(dim=-1)
         
         # e. height penalty reward for flying unnessarily high or low
-        penalty_height = torch.zeros(self.num_envs, device=self.cfg.device)
-        penalty_height[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)] = ( (self.drone.pos[..., 2] - self.height_range[..., 1] - 0.2)**2 )[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)]
-        penalty_height[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)] = ( (self.height_range[..., 0] - 0.1 - self.drone.pos[..., 2])**2 )[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)]
+        penalty_height = torch.zeros(self.num_envs, 1, device=self.cfg.device)
+        mask_upper = (self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)).unsqueeze(-1)
+        penalty_height[mask_upper] = ( (self.drone.pos[..., 2] - self.height_range[..., 1] - 0.2)**2 ).unsqueeze(-1)[mask_upper]
+        mask_lower = (self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)).unsqueeze(-1)
+        penalty_height[mask_lower] = ( (self.height_range[..., 0] - 0.1 - self.drone.pos[..., 2])**2 ).unsqueeze(-1)[mask_lower] # Apply penalty for being too low, maintaining shape
 
 
         # f. Collision condition with its penalty
@@ -811,7 +813,7 @@ class NavigationEnv(IsaacEnv):
 
         # Reward for decreasing distance to target
         reward_distance_decrease = (self.prev_distance.squeeze(-1) - distance.squeeze(-1)).clamp(min=0.0) * 10.0 # Reward for getting closer
-        self.reward = reward_forward_progress + proximity_reward + reward_distance_decrease * 0.5 - penalty_smooth * 0.1 - penalty_height * 4.0
+        self.reward = reward_forward_progress + proximity_reward + reward_distance_decrease * 0.5 - penalty_smooth * 0.1 - penalty_height.squeeze(-1) * 4.0
 
         # Terminal reward
         self.reward[collision.squeeze(-1)] -= 50.0 # Increased collision penalty to discourage collisions
