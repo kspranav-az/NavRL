@@ -611,18 +611,34 @@ class NavigationEnv(IsaacEnv):
             # apply target pos
             self.target_pos[env_ids] = target_pos
 
-            # self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
-            # self.target_pos[:, 0, 1] = 24.
-            # self.target_pos[:, 0, 2] = 2.    
+            # Calculate target position relative to drone's initial spawn position
+            # Ensure targets are within 10-15m of the drone's spawn point
+            for i in range(env_ids.size(0)):
+                # Get the initial position of the current drone
+                drone_spawn_x = self.initial_drone_pos[env_ids[i], 0, 0]
+                drone_spawn_y = self.initial_drone_pos[env_ids[i], 0, 1]
+                drone_spawn_z = self.initial_drone_pos[env_ids[i], 0, 2]
+
+                # Generate random angle and distance for target relative to drone spawn
+                angle = 2 * math.pi * torch.rand(1, device=self.device)
+                distance = 10.0 + (15.0 - 10.0) * torch.rand(1, device=self.device) # Distance between 10 and 15 meters
+
+                # Calculate target x and y based on angle and distance
+                target_x = drone_spawn_x + distance * torch.cos(angle)
+                target_y = drone_spawn_y + distance * torch.sin(angle)
+
+                # Set target z to be within a reasonable range around the drone's spawn z
+                target_z = drone_spawn_z + (torch.rand(1, device=self.device) - 0.5) * 5.0 # +/- 2.5m from drone's spawn height
+                target_z = torch.clamp(target_z, 2.0, 25.0) # Ensure target z is within overall valid height range
+
+                self.target_pos[env_ids[i], 0, 0] = target_x
+                self.target_pos[env_ids[i], 0, 1] = target_y
+                self.target_pos[env_ids[i], 0, 2] = target_z
+
         else:
             self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
             self.target_pos[:, 0, 1] = -24.
             self.target_pos[:, 0, 2] = 2.
-
-        # Set the target to the center of the environment
-        for i in range(env_ids.size(0)):
-            self.target_pos[env_ids[i], 0, 0] = 70. * torch.rand(1, dtype=torch.float, device=self.device) - 35.
-            self.target_pos[env_ids[i], 0, 1] = 70. * torch.rand(1, dtype=torch.float, device=self.device) - 35.
 
             
 
@@ -634,7 +650,7 @@ class NavigationEnv(IsaacEnv):
             # Create balanced spawn distribution including middle area
             # 40% chance for edge spawns, 60% chance for middle area spawns
             # Center spawns with slight random offset to prevent stacking
-            pos = (torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) - 0.5) * 2.0 # Random offset between -1.0 and 1.0 for x and y
+            pos = (torch.rand(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device) - 0.5) * 50.0 # Increased random offset for x and y to scatter drones
             pos[:, 0, 2] = 5.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (25.0 - 5.0) # Increased spawn height range
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
@@ -658,6 +674,7 @@ class NavigationEnv(IsaacEnv):
 
         rot = euler_to_quaternion(rpy)
         self.drone.set_world_poses(pos, rot, env_ids)
+        self.initial_drone_pos = pos.clone() # Store initial drone position
         self.drone.set_velocities(self.init_vels[env_ids], env_ids)
         self.prev_drone_vel_w[env_ids] = 0.
         self.height_range[env_ids, 0, 0] = torch.min(pos[:, 0, 2], self.target_pos[env_ids, 0, 2])
