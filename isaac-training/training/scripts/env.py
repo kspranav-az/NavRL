@@ -606,8 +606,8 @@ class NavigationEnv(IsaacEnv):
             # Center spawns with slight random offset to prevent stacking
             pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
             pos[:, 0, 0] = -45.0  # Fixed x-coordinate at one end
-            pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 10.0 # Small random y-offset
-            pos[:, 0, 2] = 10.0  # Fixed height
+            pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 20.0 # Increased random y-offset for exploration
+            pos[:, 0, 2] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * 8.0) + 2.0  # Random z-offset between 2.0 and 10.0 for exploration
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
             # pos[:, 0, 0] = (env_ids / self.num_envs - 0.5) * 32.
@@ -616,8 +616,8 @@ class NavigationEnv(IsaacEnv):
         else:
             pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
             pos[:, 0, 0] = -45.0  # Fixed x-coordinate at one end
-            pos[:, 0, 1] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) - 0.5) * 10.0 # Small random y-offset
-            pos[:, 0, 2] = 10.0  # Fixed height
+            pos[:, 0, 1] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) - 0.5) * 20.0 # Increased random y-offset for exploration
+            pos[:, 0, 2] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) * 8.0) + 2.0  # Random z-offset between 2.0 and 10.0 for exploration
         
         # Coordinate change: after reset, the drone's target direction should be changed
         self.target_dir[env_ids] = self.target_pos[env_ids] - pos
