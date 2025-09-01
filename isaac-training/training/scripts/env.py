@@ -162,6 +162,7 @@ class NavigationEnv(IsaacEnv):
             self.target_dir = torch.zeros(self.num_envs, 1, 3)
             self.height_range = torch.zeros(self.num_envs, 1, 2)
             self.prev_drone_vel_w = torch.zeros(self.num_envs, 1 , 3)
+            self.prev_distance = torch.zeros(self.num_envs, 1)
             # self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
             # self.target_pos[:, 0, 1] = 24.
             # self.target_pos[:, 0, 2] = 2.     
@@ -582,14 +583,14 @@ class NavigationEnv(IsaacEnv):
         if (self.training):
             target_pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
             target_pos[:, 0, 0] = 45.0  # Fixed x-coordinate at the other end
-            target_pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 10.0 # Small random y-offset
+            target_pos[:, 0, 1] = 0.0  # Fixed y-coordinate to align with drone's initial y-coordinate
             target_pos[:, 0, 2] = 10.0  # Fixed height
             
             self.target_pos[env_ids] = target_pos
         else:
             target_pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
             target_pos[:, 0, 0] = 45.0  # Fixed x-coordinate at the other end
-            target_pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 10.0 # Small random y-offset
+            target_pos[:, 0, 1] = 0.0  # Fixed y-coordinate to align with drone's initial y-coordinate
             target_pos[:, 0, 2] = 10.0  # Fixed height
             
             self.target_pos[env_ids] = target_pos
@@ -606,8 +607,8 @@ class NavigationEnv(IsaacEnv):
             # Center spawns with slight random offset to prevent stacking
             pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
             pos[:, 0, 0] = -45.0  # Fixed x-coordinate at one end
-            pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 40.0 # Increased random y-offset for wider spawn range
-            pos[:, 0, 2] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * 8.0) + 2.0  # Random z-offset between 2.0 and 10.0 for exploration
+            pos[:, 0, 1] = 0.0  # Fixed y-coordinate to align with target's y-coordinate
+            pos[:, 0, 2] = 5.0  # Fixed z-coordinate for consistent starting height
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
             # pos[:, 0, 0] = (env_ids / self.num_envs - 0.5) * 32.
@@ -616,8 +617,8 @@ class NavigationEnv(IsaacEnv):
         else:
             pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
             pos[:, 0, 0] = -45.0  # Fixed x-coordinate at one end
-            pos[:, 0, 1] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) - 0.5) * 40.0 # Increased random y-offset for wider spawn range
-            pos[:, 0, 2] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) * 8.0) + 2.0  # Random z-offset between 2.0 and 10.0 for exploration
+            pos[:, 0, 1] = 0.0  # Fixed y-coordinate to align with target's y-coordinate
+            pos[:, 0, 2] = 5.0  # Fixed z-coordinate for consistent starting height
         
         # Coordinate change: after reset, the drone's target direction should be changed
         self.target_dir[env_ids] = self.target_pos[env_ids] - pos
@@ -785,8 +786,8 @@ class NavigationEnv(IsaacEnv):
 
 
         # -----------------Reward Calculation-----------------
-        # a. reward for forward progress (x-velocity)
-        reward_forward_progress = self.drone.vel_w[..., 0]  # Reward for positive x-velocity
+        # a. reward for forward progress (dot product with target direction)
+        reward_forward_progress = (self.drone.vel_w[..., :3] * rpos_clipped).sum(dim=-1) # Reward for moving towards the target
 
 
         
@@ -808,10 +809,12 @@ class NavigationEnv(IsaacEnv):
         # Using an inverse relationship with distance, clamped to avoid division by zero and very large rewards
         proximity_reward = 1.0 / (distance.squeeze(-1).clamp(min=0.1)) # Reward for getting closer to target
 
-        self.reward = reward_forward_progress * 5.0 + proximity_reward * 5.0 - penalty_smooth * 0.1 - penalty_height * 4.0
+        # Reward for decreasing distance to target
+        reward_distance_decrease = (self.prev_distance.squeeze(-1) - distance.squeeze(-1)).clamp(min=0.0) * 10.0 # Reward for getting closer
+        self.reward = reward_forward_progress * 5.0 + proximity_reward * 5.0 + reward_distance_decrease - penalty_smooth * 0.1 - penalty_height * 4.0
 
         # Terminal reward
-        self.reward[collision] -= 10.0 # Reduced collision penalty for stability focus
+        self.reward[collision] -= 50.0 # Increased collision penalty to discourage collisions
 
         # Terminate Conditions
         reach_goal = (distance.squeeze(-1) < 0.5)
@@ -822,6 +825,7 @@ class NavigationEnv(IsaacEnv):
 
         # update previous velocity for smoothness calculation in the next ieteration
         self.prev_drone_vel_w = self.drone.vel_w[..., :3].clone()
+        self.prev_distance = distance.clone()
 
         # # -----------------Training Stats-----------------
         self.stats["return"] += self.reward
