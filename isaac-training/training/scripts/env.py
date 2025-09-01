@@ -156,6 +156,7 @@ class NavigationEnv(IsaacEnv):
         with torch.device(self.device):
             # self.start_pos = torch.zeros(self.num_envs, 1, 3)
             self.target_pos = torch.zeros(self.num_envs, 1, 3)
+            self.initial_drone_pos = torch.zeros(self.num_envs, 1, 3) # Initialize initial_drone_pos
             
             # Coordinate change: add target direction variable
             self.target_dir = torch.zeros(self.num_envs, 1, 3)
