@@ -808,7 +808,7 @@ class NavigationEnv(IsaacEnv):
         # Using an inverse relationship with distance, clamped to avoid division by zero and very large rewards
         proximity_reward = 1.0 / (distance.squeeze(-1).clamp(min=0.1)) # Reward for getting closer to target
 
-        self.reward = reward_forward_progress * 1.0 + proximity_reward * 5.0 - penalty_smooth * 0.1 - penalty_height * 4.0
+        self.reward = reward_forward_progress * 5.0 + proximity_reward * 5.0 - penalty_smooth * 0.1 - penalty_height * 4.0
 
         # Terminal reward
         self.reward[collision] -= 10.0 # Reduced collision penalty for stability focus
