@@ -161,7 +161,7 @@ class NavigationEnv(IsaacEnv):
             # Coordinate change: add target direction variable
             self.target_dir = torch.zeros(self.num_envs, 1, 3)
             self.height_range = torch.zeros(self.num_envs, 1, 2)
-            self.prev_drone_vel_w = torch.zeros(self.num_envs, 1 , 3)
+            self.prev_drone_vel_w = torch.zeros(self.num_envs, 1, 3)
             self.prev_distance = torch.zeros(self.num_envs, 1)
             # self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
             # self.target_pos[:, 0, 1] = 24.
@@ -795,7 +795,7 @@ class NavigationEnv(IsaacEnv):
         penalty_smooth = (self.drone.vel_w[..., :3] - self.prev_drone_vel_w).norm(dim=-1)
         
         # e. height penalty reward for flying unnessarily high or low
-        penalty_height = torch.zeros(self.num_envs, 1, device=self.cfg.device)
+        penalty_height = torch.zeros(self.num_envs, device=self.cfg.device)
         penalty_height[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)] = ( (self.drone.pos[..., 2] - self.height_range[..., 1] - 0.2)**2 )[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)]
         penalty_height[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)] = ( (self.height_range[..., 0] - 0.1 - self.drone.pos[..., 2])**2 )[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)]
 
@@ -811,7 +811,7 @@ class NavigationEnv(IsaacEnv):
 
         # Reward for decreasing distance to target
         reward_distance_decrease = (self.prev_distance.squeeze(-1) - distance.squeeze(-1)).clamp(min=0.0) * 10.0 # Reward for getting closer
-        self.reward = reward_forward_progress * 5.0 + proximity_reward * 5.0 + reward_distance_decrease - penalty_smooth * 0.1 - penalty_height * 4.0
+        self.reward = reward_forward_progress + proximity_reward + reward_distance_decrease * 0.5 - penalty_smooth * 0.1 - penalty_height * 4.0
 
         # Terminal reward
         self.reward[collision.squeeze(-1)] -= 50.0 # Increased collision penalty to discourage collisions
@@ -828,7 +828,7 @@ class NavigationEnv(IsaacEnv):
         self.prev_distance = distance.clone()
 
         # # -----------------Training Stats-----------------
-        self.stats["return"] += self.reward
+        self.stats["return"] += self.reward.unsqueeze(-1)
         self.stats["episode_len"][:] = self.progress_buf.unsqueeze(1)
         self.stats["reach_goal"] = reach_goal.float()
         self.stats["collision"] = collision.float()
