@@ -131,8 +131,8 @@ class NavigationEnv(IsaacEnv):
         # Drone Initialization
         self.drone.initialize()
         # Initialize with a small random velocity to prevent hovering
-        self.init_vels = torch.zeros_like(self.drone.get_velocities())
-        self.init_vels[:, 0] = 2.0  # Set a constant forward velocity in x-direction
+        # self.init_vels = torch.zeros_like(self.drone.get_velocities())
+        # self.init_vels[:, 0] = 2.0  # Set a constant forward velocity in x-direction
 
 
         # LiDAR Intialization
@@ -606,7 +606,7 @@ class NavigationEnv(IsaacEnv):
             # Center spawns with slight random offset to prevent stacking
             pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
             pos[:, 0, 0] = -45.0  # Fixed x-coordinate at one end
-            pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 20.0 # Increased random y-offset for exploration
+            pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 40.0 # Increased random y-offset for wider spawn range
             pos[:, 0, 2] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * 8.0) + 2.0  # Random z-offset between 2.0 and 10.0 for exploration
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
@@ -616,7 +616,7 @@ class NavigationEnv(IsaacEnv):
         else:
             pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
             pos[:, 0, 0] = -45.0  # Fixed x-coordinate at one end
-            pos[:, 0, 1] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) - 0.5) * 20.0 # Increased random y-offset for exploration
+            pos[:, 0, 1] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) - 0.5) * 40.0 # Increased random y-offset for wider spawn range
             pos[:, 0, 2] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) * 8.0) + 2.0  # Random z-offset between 2.0 and 10.0 for exploration
         
         # Coordinate change: after reset, the drone's target direction should be changed
@@ -630,7 +630,7 @@ class NavigationEnv(IsaacEnv):
 
         rot = euler_to_quaternion(rpy)
         self.drone.set_world_poses(pos, rot, env_ids)
-        self.drone.set_velocities(self.init_vels[env_ids], env_ids)
+        # self.drone.set_velocities(self.init_vels[env_ids], env_ids) # Commented out to remove initial velocity
         self.prev_drone_vel_w[env_ids] = 0.
         self.height_range[env_ids, 0, 0] = torch.min(pos[:, 0, 2], self.target_pos[env_ids, 0, 2])
         self.height_range[env_ids, 0, 1] = torch.max(pos[:, 0, 2], self.target_pos[env_ids, 0, 2])
