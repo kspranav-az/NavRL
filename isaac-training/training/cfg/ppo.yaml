@@ -1,21 +1,21 @@
 algo:
   feature_extractor:
-    learning_rate: 5e-4  # Increased for faster learning
+    learning_rate: 3e-4  # Reverted for stability
     dyn_obs_num: 6       # Keep 6 for stability
     hidden_size: 256      # Keep 256 for stability
   
   actor:
-    learning_rate: 5e-4  # Increased for faster learning
+    learning_rate: 3e-4  # Reverted for stability
     clip_ratio: 0.1
     action_limit: 2.2    # Keep 2.2 for stability
     hidden_size: 256     # Keep 256 for stability
   
   critic:
-    learning_rate: 5e-4  # Increased for faster learning
+    learning_rate: 3e-4  # Reverted for stability
     clip_ratio: 0.1
     hidden_size: 256     # Keep 256 for stability
   
-  entropy_loss_coefficient: 1e-3  # Further decreased for less exploration and more stability
+  entropy_loss_coefficient: 1e-3  # Decreased to reduce randomness and encourage convergence
   training_frame_num: 64   # Reduced from 128 to 64 for slower policy updates
   training_epoch_num: 4    # Increased from 2 to 4 for better policy convergence
   num_minibatches: 12      # Increased from 8 to 12 for better data diversity
