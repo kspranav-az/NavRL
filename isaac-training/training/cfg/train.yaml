@@ -18,11 +18,11 @@ env:
   num_envs: 750          # Keep 750 drones for stability
   max_episode_length: 400  # Increased from 250 to 400 for longer episodes
   env_spacing: 22.0      # Keep spacing for stability
-  num_obstacles: 60      # Keep obstacles for stability
+  num_obstacles: 0      # Removed static obstacles
   hover_assistance: False
 
 env_dyn:
-  num_obstacles: 60      # Enabled dynamic obstacles
+  num_obstacles: 0      # Removed dynamic obstacles
   vel_range: [0.5, 1.8]  # Keep velocity range for stability
   local_range: [6.0, 6.0, 5.0]  # Keep local range for stability
 

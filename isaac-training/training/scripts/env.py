@@ -131,7 +131,8 @@ class NavigationEnv(IsaacEnv):
         # Drone Initialization
         self.drone.initialize()
         # Initialize with a small random velocity to prevent hovering
-        self.init_vels = (torch.rand_like(self.drone.get_velocities()) - 0.5) * 0.5
+        self.init_vels = torch.zeros_like(self.drone.get_velocities())
+        self.init_vels[:, 0] = 2.0  # Set a constant forward velocity in x-direction
 
 
         # LiDAR Intialization
@@ -270,7 +271,7 @@ class NavigationEnv(IsaacEnv):
                         horizontal_scale=0.1,
                         vertical_scale=0.1,
                         border_width=10.0,
-                        num_obstacles=0,
+                        num_obstacles=self.cfg.env.num_obstacles,
                         obstacle_height_mode="choice",  # Fixed: use "choice" instead of "range"
                         obstacle_width_range=(0.5, 1.5),  # Decreased width for thinner obstacles
                         obstacle_height_range=(22.0, 25.0),  # Increased height to be more than drone's max flying height
@@ -301,7 +302,7 @@ class NavigationEnv(IsaacEnv):
                 print(f"[NavigationEnv] Fallback ground plane also failed: {ground_e}")
             return
 
-        if (0 == 0):
+        if (self.cfg.env_dyn.num_obstacles == 0):
             print("[NavigationEnv] No dynamic obstacles configured, skipping creation")
             return
         # Dynamic Obstacles
@@ -321,13 +322,13 @@ class NavigationEnv(IsaacEnv):
         # Ensure we have at least 1 obstacle per category, and handle cases where num_obstacles < category_num
         if self.cfg.env_dyn.num_obstacles < dyn_obs_category_num:
             # If we have fewer obstacles than categories, distribute them evenly
-            self.dyn_obs_num_of_each_category = 0
+            self.dyn_obs_num_of_each_category = 1
             # Adjust the total to match the category structure
-            self.cfg.env_dyn.num_obstacles = 0
+            self.cfg.env_dyn.num_obstacles = dyn_obs_category_num
             print(f"[NavigationEnv] Adjusted dynamic obstacles from {self.cfg.env_dyn.num_obstacles} to {dyn_obs_category_num} to fit category structure")
         else:
-            self.dyn_obs_num_of_each_category = 0
-            self.cfg.env_dyn.num_obstacles = 0
+            self.dyn_obs_num_of_each_category = int(self.cfg.env_dyn.num_obstacles / dyn_obs_category_num)
+            self.cfg.env_dyn.num_obstacles = self.dyn_obs_num_of_each_category * dyn_obs_category_num
 
 
         # Dynamic obstacle info
@@ -340,7 +341,7 @@ class NavigationEnv(IsaacEnv):
         self.dyn_obs_step_count = 0 # dynamic obstacle motion step count
         self.dyn_obs_size = torch.zeros((self.cfg.env_dyn.num_obstacles, 3), dtype=torch.float, device=self.device) # size of dynamic obstacles
         
-        print(f"[NavigationEnv] Initializing 0 dynamic obstacles...")
+        print(f"[NavigationEnv] Initializing {self.cfg.env_dyn.num_obstacles} dynamic obstacles...")
 
         # helper function to check pos validity for even distribution condition
         def check_pos_validity(prev_pos_list, curr_pos, adjusted_obs_dist):
@@ -579,40 +580,19 @@ class NavigationEnv(IsaacEnv):
     
     def reset_target(self, env_ids: torch.Tensor):
         if (self.training):
-            # Create balanced target distribution including middle area
-            # 40% chance for edge targets, 60% chance for middle area targets
-            edge_prob = 0.4
-            middle_prob = 0.6
-            
             target_pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
-            target_pos[:, 0, 0] = 45.0 # Target at the other end of the x-axis
-            target_pos[:, 0, 1] = 0.0 # Center along y-axis
-            target_pos[:, 0, 2] = 10.0 # Fixed height for stable hovering
-        # else:
-        #     # Middle area targets (new logic)
-        #     # Generate targets in the center area (-12, 12) × (-12, 12)
-        #     pos = 24. * torch.rand(1, 1, 3, dtype=torch.float, device=self.device) + (-12.)
-        #     target_pos[i] = pos
+            target_pos[:, 0, 0] = 45.0  # Fixed x-coordinate at the other end
+            target_pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 10.0 # Small random y-offset
+            target_pos[:, 0, 2] = 10.0  # Fixed height
             
-            # Set heights for all targets
-            heights = 2.0 + torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * (4.0 - 2.0)  # Lowered height range to force obstacle navigation
-            target_pos[:, 0, 2] = heights
-            
-            # apply target pos
             self.target_pos[env_ids] = target_pos
-
-            # self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
-            # self.target_pos[:, 0, 1] = 24.
-            # self.target_pos[:, 0, 2] = 2.    
         else:
-            self.target_pos[:, 0, 0] = torch.linspace(-0.5, 0.5, self.num_envs) * 32.
-            self.target_pos[:, 0, 1] = -24.
-            self.target_pos[:, 0, 2] = 2.
-
-        # Set the target to the center of the environment
-        for i in range(env_ids.size(0)):
-            self.target_pos[env_ids[i], 0, 0] = 70. * torch.rand(1, dtype=torch.float, device=self.device) - 35.
-            self.target_pos[env_ids[i], 0, 1] = 70. * torch.rand(1, dtype=torch.float, device=self.device) - 35.
+            target_pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
+            target_pos[:, 0, 0] = 45.0  # Fixed x-coordinate at the other end
+            target_pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 10.0 # Small random y-offset
+            target_pos[:, 0, 2] = 10.0  # Fixed height
+            
+            self.target_pos[env_ids] = target_pos
 
             
 
@@ -625,9 +605,9 @@ class NavigationEnv(IsaacEnv):
             # 40% chance for edge spawns, 60% chance for middle area spawns
             # Center spawns with slight random offset to prevent stacking
             pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
-            pos[:, 0, 0] = -45.0 # Spawn at one end of the x-axis
-            pos[:, 0, 1] = 0.0 # Center along y-axis
-            pos[:, 0, 2] = 10.0 # Fixed height for stable hovering
+            pos[:, 0, 0] = -45.0  # Fixed x-coordinate at one end
+            pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 10.0 # Small random y-offset
+            pos[:, 0, 2] = 10.0  # Fixed height
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
             # pos[:, 0, 0] = (env_ids / self.num_envs - 0.5) * 32.
@@ -635,9 +615,9 @@ class NavigationEnv(IsaacEnv):
             # pos[:, 0, 2] = 2.
         else:
             pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
-            pos[:, 0, 0] = (env_ids / self.num_envs - 0.5) * 32.
-            pos[:, 0, 1] = 24.
-            pos[:, 0, 2] = 2.
+            pos[:, 0, 0] = -45.0  # Fixed x-coordinate at one end
+            pos[:, 0, 1] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) - 0.5) * 10.0 # Small random y-offset
+            pos[:, 0, 2] = 10.0  # Fixed height
         
         # Coordinate change: after reset, the drone's target direction should be changed
         self.target_dir[env_ids] = self.target_pos[env_ids] - pos
@@ -650,10 +630,7 @@ class NavigationEnv(IsaacEnv):
 
         rot = euler_to_quaternion(rpy)
         self.drone.set_world_poses(pos, rot, env_ids)
-        # Set initial velocity to a small forward value
-        forward_vel = torch.zeros_like(self.init_vels[env_ids])
-        forward_vel[:, 0] = 0.5 # Small forward velocity along x-axis
-        self.drone.set_velocities(forward_vel, env_ids)
+        self.drone.set_velocities(self.init_vels[env_ids], env_ids)
         self.prev_drone_vel_w[env_ids] = 0.
         self.height_range[env_ids, 0, 0] = torch.min(pos[:, 0, 2], self.target_pos[env_ids, 0, 2])
         self.height_range[env_ids, 0, 1] = torch.max(pos[:, 0, 2], self.target_pos[env_ids, 0, 2])
@@ -808,17 +785,10 @@ class NavigationEnv(IsaacEnv):
 
 
         # -----------------Reward Calculation-----------------
-        # a. safety reward for static obstacles
-        reward_safety_static = torch.log((self.lidar_range-self.lidar_scan).clamp(min=1e-6, max=self.lidar_range)).mean(dim=(2, 3))
-        
+        # a. reward for forward progress (x-velocity)
+        reward_forward_progress = self.drone.vel_w[..., 0]  # Reward for positive x-velocity
 
-        # b. safety reward for dynamic obstacles
-        if (self.cfg.env_dyn.num_obstacles != 0):
-            reward_safety_dynamic = torch.log((closest_dyn_obs_distance_reward).clamp(min=1e-6, max=self.lidar_range)).mean(dim=-1, keepdim=True)
 
-        # c. velocity reward for goal direction
-        vel_direction = rpos / distance.clamp_min(1e-6)
-        reward_vel = (self.drone.vel_w[..., :3] * vel_direction).sum(-1)#.clip(max=2.0)
         
         # d. smoothness reward for action smoothness
         penalty_smooth = (self.drone.vel_w[..., :3] - self.prev_drone_vel_w).norm(dim=-1)
@@ -838,13 +808,10 @@ class NavigationEnv(IsaacEnv):
         # Using an inverse relationship with distance, clamped to avoid division by zero and very large rewards
         proximity_reward = 1.0 / (distance.squeeze(-1).clamp(min=0.1)) # Reward for getting closer to target
 
-        if (self.cfg.env_dyn.num_obstacles != 0):
-            self.reward = reward_vel + 1. + reward_safety_static * 1.0 + reward_safety_dynamic * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0 + proximity_reward * 5.0 # Increased weight for proximity
-        else:
-            self.reward = reward_vel + 1. + reward_safety_static * 1.0 - penalty_smooth * 0.1 - penalty_height * 4.0 + proximity_reward * 5.0 # Increased weight for proximity
+        self.reward = reward_forward_progress * 1.0 + proximity_reward * 5.0 - penalty_smooth * 0.1 - penalty_height * 4.0
 
         # Terminal reward
-        self.reward[collision] -= 50. # collision penalty
+        self.reward[collision] -= 10.0 # Reduced collision penalty for stability focus
 
         # Terminate Conditions
         reach_goal = (distance.squeeze(-1) < 0.5)
