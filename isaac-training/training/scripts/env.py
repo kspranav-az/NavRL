@@ -814,7 +814,7 @@ class NavigationEnv(IsaacEnv):
         self.reward = reward_forward_progress * 5.0 + proximity_reward * 5.0 + reward_distance_decrease - penalty_smooth * 0.1 - penalty_height * 4.0
 
         # Terminal reward
-        self.reward[collision] -= 50.0 # Increased collision penalty to discourage collisions
+        self.reward[collision.squeeze(-1)] -= 50.0 # Increased collision penalty to discourage collisions
 
         # Terminate Conditions
         reach_goal = (distance.squeeze(-1) < 0.5)
