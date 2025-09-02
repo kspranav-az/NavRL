@@ -829,7 +829,7 @@ class NavigationEnv(IsaacEnv):
         collision = static_collision | dynamic_collision.squeeze(-1)
         
         # Track collision count
-        self.collision_count[collision.unsqueeze(-1)] += 1
+        self.collision_count = torch.where(collision.unsqueeze(-1), self.collision_count + 1, self.collision_count)
 
         # Final reward computation
         self.reward = (
@@ -847,14 +847,14 @@ class NavigationEnv(IsaacEnv):
         above_bound = self.root_state[..., 2] > 15.0
         
         # Collision penalty
-        self.reward[collision.unsqueeze(-1)] -= 10.0
+        self.reward = torch.where(collision.unsqueeze(-1), self.reward - 10.0, self.reward)
         
         # Goal achievement bonus
-        self.reward[reach_goal.unsqueeze(-1)] += 50.0
+        self.reward = torch.where(reach_goal.unsqueeze(-1), self.reward + 50.0, self.reward)
         
         # Multiple collision penalty (discourage repeated crashes)
         repeated_collision_mask = self.collision_count > 3
-        self.reward[repeated_collision_mask] -= 5.0
+        self.reward = torch.where(repeated_collision_mask, self.reward - 5.0, self.reward)
 
         # Terminal conditions
         self.terminated = below_bound.unsqueeze(-1) | above_bound.unsqueeze(-1) | collision.unsqueeze(-1) | reach_goal.unsqueeze(-1)
