@@ -847,13 +847,13 @@ class NavigationEnv(IsaacEnv):
         above_bound = self.root_state[..., 2] > 15.0
         
         # Collision penalty
-        self.reward[collision.unsqueeze(-1)] -= 10.0
+        self.reward[collision.unsqueeze(-1).expand_as(self.reward)] -= 10.0
         
         # Goal achievement bonus
-        self.reward[reach_goal.unsqueeze(-1)] += 50.0
+        self.reward[reach_goal.unsqueeze(-1).expand_as(self.reward)] += 50.0
         
         # Multiple collision penalty (discourage repeated crashes)
-        repeated_collision_mask = self.collision_count > 3
+        repeated_collision_mask = (self.collision_count > 3).expand_as(self.reward)
         self.reward[repeated_collision_mask] -= 5.0
 
         # Terminal conditions
