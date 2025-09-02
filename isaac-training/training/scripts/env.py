@@ -130,6 +130,7 @@ class NavigationEnv(IsaacEnv):
         
         # Drone Initialization
         self.drone.initialize()
+        self.collision_count = torch.zeros(self.num_envs, 1, dtype=torch.long, device=self.device)
         # Initialize with a small random velocity to prevent hovering
         # self.init_vels = torch.zeros_like(self.drone.get_velocities())
         # self.init_vels[:, 0] = 2.0  # Set a constant forward velocity in x-direction
@@ -581,16 +582,16 @@ class NavigationEnv(IsaacEnv):
     def reset_target(self, env_ids: torch.Tensor):
         if (self.training):
             target_pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
-            target_pos[:, 0, 0] = 45.0  # Fixed x-coordinate at the other end
-            target_pos[:, 0, 1] = 0.0    # Fixed y-coordinate
-            target_pos[:, 0, 2] = 5.0    # Fixed z-coordinate (height)
+            target_pos[:, 0, 0] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 90.0 # Random x-coordinate between -45 and 45
+            target_pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 20.0 # Random y-coordinate between -10 and 10
+            target_pos[:, 0, 2] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * 8.0) + 2.0  # Random z-offset between 2.0 and 10.0
             
             self.target_pos[env_ids] = target_pos
         else:
             target_pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
-            target_pos[:, 0, 0] = 45.0  # Fixed x-coordinate at the other end
-            target_pos[:, 0, 1] = 0.0    # Fixed y-coordinate
-            target_pos[:, 0, 2] = 5.0    # Fixed z-coordinate (height)
+            target_pos[:, 0, 0] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 90.0 # Random x-coordinate between -45 and 45
+            target_pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 20.0 # Random y-coordinate between -10 and 10
+            target_pos[:, 0, 2] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * 8.0) + 2.0  # Random z-offset between 2.0 and 10.0
             
             self.target_pos[env_ids] = target_pos
 
@@ -600,14 +601,15 @@ class NavigationEnv(IsaacEnv):
     def _reset_idx(self, env_ids: torch.Tensor):
         self.drone._reset_idx(env_ids, self.training)
         self.reset_target(env_ids)
+        self.collision_count = torch.zeros(self.num_envs, 1, dtype=torch.long, device=self.device)
         if (self.training):
             # Create balanced spawn distribution including middle area
             # 40% chance for edge spawns, 60% chance for middle area spawns
             # Center spawns with slight random offset to prevent stacking
             pos = torch.zeros(env_ids.size(0), 1, 3, dtype=torch.float, device=self.device)
-            pos[:, 0, 0] = -45.0  # Fixed x-coordinate at one end
-            pos[:, 0, 1] = 0.0    # Fixed y-coordinate
-            pos[:, 0, 2] = 5.0    # Fixed z-coordinate (height)
+            pos[:, 0, 0] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 90.0 # Random x-coordinate between -45 and 45
+            pos[:, 0, 1] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) - 0.5) * 20.0 # Random y-coordinate between -10 and 10
+            pos[:, 0, 2] = (torch.rand(env_ids.size(0), dtype=torch.float, device=self.device) * 8.0) + 2.0  # Random z-offset between 2.0 and 10.0
             
             # pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
             # pos[:, 0, 0] = (env_ids / self.num_envs - 0.5) * 32.
@@ -615,9 +617,9 @@ class NavigationEnv(IsaacEnv):
             # pos[:, 0, 2] = 2.
         else:
             pos = torch.zeros(len(env_ids), 1, 3, device=self.device)
-            pos[:, 0, 0] = -45.0  # Fixed x-coordinate at one end
-            pos[:, 0, 1] = 0.0    # Fixed y-coordinate
-            pos[:, 0, 2] = 5.0    # Fixed z-coordinate (height)
+            pos[:, 0, 0] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) - 0.5) * 90.0 # Random x-coordinate between -45 and 45
+            pos[:, 0, 1] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) - 0.5) * 20.0 # Random y-coordinate between -10 and 10
+            pos[:, 0, 2] = (torch.rand(len(env_ids), dtype=torch.float, device=self.device) * 8.0) + 2.0  # Random z-offset between 2.0 and 10.0
         
         # Coordinate change: after reset, the drone's target direction should be changed
         self.target_dir[env_ids] = self.target_pos[env_ids] - pos
@@ -775,7 +777,7 @@ class NavigationEnv(IsaacEnv):
             dyn_obs_states = torch.zeros(self.num_envs, 1, self.cfg.algo.feature_extractor.dyn_obs_num, 10, device=self.cfg.device)
             dynamic_collision = torch.zeros(self.num_envs, 1, dtype=torch.bool, device=self.cfg.device)
             
-        # -----------------Network Input Final--------------
+        # Observation dictionary
         obs = {
             "state": drone_state,
             "lidar": self.lidar_scan,
@@ -783,52 +785,91 @@ class NavigationEnv(IsaacEnv):
             "dynamic_obstacle": dyn_obs_states
         }
 
-
-        # -----------------Reward Calculation-----------------
-        # a. reward for forward progress (x-velocity)
-        reward_forward_progress = self.drone.vel_w[..., 0]  # Reward for positive x-velocity
-
-
+        # Enhanced reward calculation
+        # 1. Progress toward target
+        reward_progress = torch.clamp(vel_g[..., 0], -2.0, 4.0)  # Forward progress reward
         
-        # d. smoothness reward for action smoothness
-        penalty_smooth = (self.drone.vel_w[..., :3] - self.prev_drone_vel_w).norm(dim=-1)
+        # 2. Target proximity bonus
+        proximity_bonus = 2.0 / (distance.squeeze(-1) + 1.0)
         
-        # e. height penalty reward for flying unnessarily high or low
-        penalty_height = torch.zeros(self.num_envs, 1, device=self.cfg.device)
-        penalty_height[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)] = ( (self.drone.pos[..., 2] - self.height_range[..., 1] - 0.2)**2 )[self.drone.pos[..., 2] > (self.height_range[..., 1] + 0.2)]
-        penalty_height[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)] = ( (self.height_range[..., 0] - 0.1 - self.drone.pos[..., 2])**2 )[self.drone.pos[..., 2] < (self.height_range[..., 0] - 0.1)]
-
-
-        # f. Collision condition with its penalty
-        static_collision = einops.reduce(self.lidar_scan, "n 1 w h -> n 1", "max") >  (self.lidar_range - 0.3) # 0.3 collision radius
-        collision = static_collision | dynamic_collision
+        # 3. Obstacle avoidance reward
+        obstacle_avoidance_reward = torch.zeros_like(distance.squeeze(-1))
+        safe_distance = 2.0  # Desired minimum distance from obstacles
         
-        # Final reward calculation
-        # Proximity reward: increases as the drone gets closer to the target
-        # Using an inverse relationship with distance, clamped to avoid division by zero and very large rewards
-        proximity_reward = 1.0 / (distance.squeeze(-1).clamp(min=0.1)) # Reward for getting closer to target
+        min_lidar_dist = einops.reduce(self.lidar_scan, "n 1 w h -> n 1", "min")
 
-        self.reward = reward_forward_progress * 10.0 + proximity_reward * 10.0 - penalty_smooth * 0.1 - penalty_height * 2.0
+        if min_lidar_dist.min() < safe_distance:
+            # Reward maintaining safe distance
+            distance_factor = min_lidar_dist.squeeze(-1) / safe_distance
+            obstacle_avoidance_reward = torch.where(
+                min_lidar_dist.squeeze(-1) < safe_distance,
+                (distance_factor - 0.2) * 2.0,  # Reward being at safe distance
+                torch.tensor(0.5, device=self.cfg.device)  # Small bonus for being in safe zone
+            )
+        
+        # 4. Velocity smoothness penalty
+        vel_change = (vel_w - self.prev_drone_vel_w).norm(dim=-1)
+        smoothness_penalty = vel_change.squeeze(-1) * 0.5
+        
+        # 5. Height maintenance reward
+        target_height = (self.target_pos[..., 2] + self.root_state[..., 2]) / 2.0
+        current_height = self.root_state[..., 2]
+        height_penalty = torch.abs(current_height - target_height.squeeze(-1)) * 0.3
+        
+        # 6. Efficiency bonus (reward direct path to target)
+        efficiency_bonus = torch.where(
+            distance.squeeze(-1) < 10.0,
+            (10.0 - distance.squeeze(-1)) * 0.2,
+            torch.tensor(0.0, device=self.cfg.device)
+        )
 
-        # Terminal reward
-        self.reward[collision] -= 20.0 # Increased collision penalty to discourage collisions
+        # Collision detection
+        collision_threshold = 0.4
+        static_collision = min_lidar_dist.squeeze(-1) < collision_threshold
+        collision = static_collision | dynamic_collision.squeeze(-1)
+        
+        # Track collision count
+        self.collision_count[collision.unsqueeze(-1)] += 1
 
-        # Terminate Conditions
-        reach_goal = (distance.squeeze(-1) < 0.5)
-        below_bound = self.drone.pos[..., 2] < 0.1
-        above_bound = self.drone.pos[..., 2] > 5.
-        self.terminated = below_bound | above_bound | collision
-        self.truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1) # progress buf is to track the step number
+        # Final reward computation
+        self.reward = (
+            reward_progress * 3.0 +           # Progress toward target
+            proximity_bonus * 2.0 +           # Getting closer to target  
+            obstacle_avoidance_reward * 1.5 + # Obstacle avoidance
+            efficiency_bonus * 1.0 -          # Direct path bonus
+            smoothness_penalty * 0.5 -        # Smooth flying
+            height_penalty * 0.3              # Height maintenance
+        ).unsqueeze(-1)
 
-        # update previous velocity for smoothness calculation in the next ieteration
-        self.prev_drone_vel_w = self.drone.vel_w[..., :3].clone()
+        # Terminal conditions and penalties
+        reach_goal = (distance.squeeze(-1) < 1.0)
+        below_bound = self.root_state[..., 2] < 0.5
+        above_bound = self.root_state[..., 2] > 15.0
+        
+        # Collision penalty
+        self.reward[collision.unsqueeze(-1)] -= 10.0
+        
+        # Goal achievement bonus
+        self.reward[reach_goal.unsqueeze(-1)] += 50.0
+        
+        # Multiple collision penalty (discourage repeated crashes)
+        repeated_collision_mask = self.collision_count > 3
+        self.reward[repeated_collision_mask] -= 5.0
 
-        # # -----------------Training Stats-----------------
+        # Terminal conditions
+        self.terminated = below_bound.unsqueeze(-1) | above_bound.unsqueeze(-1) | collision.unsqueeze(-1) | reach_goal.unsqueeze(-1)
+        self.truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
+
+        # Update tracking variables
+        self.prev_drone_vel_w = vel_w.clone()
+
+        # Update statistics
         self.stats["return"] += self.reward
         self.stats["episode_len"][:] = self.progress_buf.unsqueeze(1)
-        self.stats["reach_goal"] = reach_goal.float()
-        self.stats["collision"] = collision.float()
+        self.stats["reach_goal"] = reach_goal.float().unsqueeze(-1)
+        self.stats["collision"] = collision.float().unsqueeze(-1)
         self.stats["truncated"] = self.truncated.float()
+        self.stats["min_obstacle_dist"] = min_lidar_dist
 
         return TensorDict({
             "agents": TensorDict(
