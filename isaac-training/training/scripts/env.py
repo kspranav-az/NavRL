@@ -864,7 +864,7 @@ class NavigationEnv(IsaacEnv):
         self.prev_drone_vel_w = vel_w.clone()
 
         # Update statistics
-        self.stats["return"] += self.reward
+        self.stats["return"] += self.reward.unsqueeze(-1)
         self.stats["episode_len"][:] = self.progress_buf.unsqueeze(-1)
         self.stats["reach_goal"] = reach_goal.float().unsqueeze(-1)
         self.stats["collision"] = collision.float().unsqueeze(-1)
