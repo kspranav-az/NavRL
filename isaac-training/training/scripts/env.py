@@ -563,11 +563,11 @@ class NavigationEnv(IsaacEnv):
 
 
         stats_spec = CompositeSpec({
-            "return": UnboundedContinuousTensorSpec(1),
-            "episode_len": UnboundedContinuousTensorSpec(1),
-            "reach_goal": UnboundedContinuousTensorSpec(1),
-            "collision": UnboundedContinuousTensorSpec(1),
-            "truncated": UnboundedContinuousTensorSpec(1),
+            "return": UnboundedContinuousTensorSpec((self.num_envs,)),
+            "episode_len": UnboundedContinuousTensorSpec((self.num_envs,)),
+            "reach_goal": UnboundedContinuousTensorSpec((self.num_envs,)),
+            "collision": UnboundedContinuousTensorSpec((self.num_envs,)),
+            "truncated": UnboundedContinuousTensorSpec((self.num_envs,)),
         }).expand(self.num_envs).to(self.device)
 
         info_spec = CompositeSpec({
@@ -864,10 +864,19 @@ class NavigationEnv(IsaacEnv):
         self.prev_drone_vel_w = vel_w.clone()
 
         # Update statistics
-        self.stats["return"] += self.reward.squeeze(-1)
-        self.stats["episode_len"][:] = self.progress_buf.unsqueeze(1)
+        self.stats["return"] += self.reward
+        self.stats["episode_len"][:] = self.progress_buf.unsqueeze(-1)
         self.stats["reach_goal"] = reach_goal.float().unsqueeze(-1)
         self.stats["collision"] = collision.float().unsqueeze(-1)
+        self.stats["truncated"] = self.truncated.float().unsqueeze(-1)
+
+        
+        self.stats["truncated"] = self.truncated.float().unsqueeze(-1)
+        self.stats["truncated"] = self.truncated.float().unsqueeze(-1)
+        self.stats["truncated"] = self.truncated.float().unsqueeze(-1)
+        self.stats["truncated"] = self.truncated.float().unsqueeze(-1)
+        self.stats["truncated"] = self.truncated.float().unsqueeze(-1)
+        self.stats["truncated"] = self.truncated.float().unsqueeze(-1)
         self.stats["truncated"] = self.truncated.float()
         self.stats["min_obstacle_dist"] = min_lidar_dist
 
