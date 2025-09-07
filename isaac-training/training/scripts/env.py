@@ -130,7 +130,8 @@ class NavigationEnv(IsaacEnv):
         ray_caster_cfg = RayCasterCfg(
             prim_path="/World/envs/env_.*/Hummingbird_0/base_link",
             offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 0.0)),
-            attach_yaw_only=True,
+            ray_alignment='yaw',
+            #attach_yaw_only=True,
             # attach_yaw_only=False,
             pattern_cfg=patterns.BpearlPatternCfg(
                 horizontal_res=self.lidar_hres, # horizontal default is set to 10
