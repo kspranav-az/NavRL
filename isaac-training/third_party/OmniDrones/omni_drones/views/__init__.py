@@ -497,7 +497,7 @@ class ArticulationView(_ArticulationView):
                         print(f"[OmniDrones] WARNING: Shape mismatch - indices: {indices.shape}, orientations: {orientations_reshaped.shape}")
                     poses[indices, 3:] = orientations_reshaped
                 
-                print(f"[OmniDrones] set_world_poses: poses shape {poses.shape}, indices shape {indices.shape}")
+                #print(f"[OmniDrones] set_world_poses: poses shape {poses.shape}, indices shape {indices.shape}")
                 self._physics_view.set_root_transforms(poses, indices)
                 
             except Exception as e:
