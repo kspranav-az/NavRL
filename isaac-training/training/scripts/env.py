@@ -578,8 +578,11 @@ class NavigationEnv(IsaacEnv):
     
     # get current states/observation
     def _compute_state_and_obs(self):
-        if hasattr(self, 'progress_buf') and self.progress_buf[0] % 100 == 0:
-            print(f"[NavEnv] Step {self.progress_buf[0]}: Avg reward: {getattr(self, 'reward', torch.tensor(0)).mean().item():.2f}")
+        if hasattr(self, 'reward') and self.progress_buf[0] % 100 == 0:
+            reward = getattr(self, 'reward', torch.tensor(0.0, device=self.device))
+            if isinstance(reward, torch.Tensor) and reward.dtype != torch.float32:
+                reward = reward.float()
+            print(f"[NavEnv] Step {self.progress_buf[0].item()}: Avg reward: {reward.mean().item():.2f}")
         self.root_state = self.drone.get_state(env_frame=False) # (world_pos, orientation (quat), world_vel_and_angular, heading, up, 4motorsthrust)
         self.info["drone_state"][:] = self.root_state[..., :13] # info is for controller
 
