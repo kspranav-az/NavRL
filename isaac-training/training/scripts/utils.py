@@ -181,7 +181,7 @@ def evaluate(
             return_contiguous=False,
         )
     # base_env.enable_render(not cfg.headless)
-    env.enable_render(not cfg.headless)
+    env.enable_render(True)
     env.reset()
     
     done = trajs.get(("next", "done")) 

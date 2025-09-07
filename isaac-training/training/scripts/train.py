@@ -23,6 +23,12 @@ from torchrl.record.loggers import get_logger, generate_exp_name
 FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cfg")
 @hydra.main(config_path=FILE_PATH, config_name="train", version_base=None)
 def main(cfg):
+    print("="*50)
+    print(f"Starting training with config:")
+    print(f"  Envs: {cfg.env.num_envs}, Max steps: {cfg.max_frame_num}")
+    print(f"  Eval every: {cfg.eval_interval} steps")
+    print("="*50)
+    
     # Simulation App
     sim_app = SimulationApp({"headless": cfg.headless, "anti_aliasing": 1})
 
@@ -77,8 +83,9 @@ def main(cfg):
 
     # Training Loop
     for i, data in enumerate(collector):
-        # print("data: ", data)
-        # print("============================")
+        if i % 100 == 0:
+            print(f"\n[Train] Step: {i}, FPS: {collector._fps:.1f}, Frames: {collector._frames}")
+            
         # Log Info
         info = {"env_frames": collector._frames, "rollout_fps": collector._fps}
 
@@ -97,17 +104,26 @@ def main(cfg):
 
         # Evaluate policy and log info
         if i % cfg.eval_interval == 0:
+            print("\n" + "="*30)
+            print(f"Evaluation @ step {i}:")
             print("[NavRL]: start evaluating policy at training step: ", i)
             env.enable_render(True)
             env.eval()
-            eval_info = evaluate(
-                env=transformed_env, 
-                policy=policy,
-                seed=cfg.seed, 
-                cfg=cfg,
-                exploration_type=ExplorationType.MEAN
-            )
-            env.enable_render(not cfg.headless)
+            try:
+                eval_info = evaluate(
+                    env=transformed_env, 
+                    policy=policy,
+                    seed=cfg.seed, 
+                    cfg=cfg,
+                    exploration_type=ExplorationType.MEAN
+                )
+                # Print evaluation metrics
+                for k, v in eval_info.items():
+                    if isinstance(v, (int, float)):
+                        print(f"  {k}: {v:.4f}")
+            except Exception as e:
+                print(f"[Error] Evaluation failed: {str(e)}")
+            env.enable_render(True)
             env.train()
             env.reset()
             info.update(eval_info)
@@ -144,6 +160,7 @@ def main(cfg):
 
         # Save Model
         if i % cfg.save_interval == 0:
+            print(f"\n[Train] Saving checkpoint @ step {i}")
             ckpt_dir = os.path.join(logger.log_dir, "checkpoints")
             os.makedirs(ckpt_dir, exist_ok=True)
             ckpt_path = os.path.join(ckpt_dir, f"checkpoint_{i}.pt")

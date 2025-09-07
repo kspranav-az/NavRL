@@ -284,8 +284,9 @@ class IsaacEnv(EnvBase):
         try:
             from isaacsim.core.simulation_manager import SimulationManager
             physics_sim_view = SimulationManager.get_physics_sim_view()
-            if physics_sim_view is not None:
-                physics_sim_view.flush()
+            # CRITICAL 
+            # if physics_sim_view is not None:
+            #     physics_sim_view.flush()
         except ImportError:
             # Fallback for older versions
             if hasattr(self.sim, '_physics_sim_view') and self.sim._physics_sim_view is not None:

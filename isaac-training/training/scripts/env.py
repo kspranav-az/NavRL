@@ -108,7 +108,7 @@ class NavigationEnv(IsaacEnv):
             print("[NavigationEnv] Will use shape-based ground plane instead")
 
     def __init__(self, cfg):
-        print("[Navigation Environment]: Initializing Env...")
+        print(f"[NavEnv] Initializing {cfg.env.num_envs} parallel environments")
         # Configure Nucleus server asset root before initialization
         self._configure_nucleus_server()
         
@@ -159,6 +159,7 @@ class NavigationEnv(IsaacEnv):
 
 
     def _design_scene(self):
+        print(f"[NavEnv] Scene: {self.cfg.env.num_obstacles} static, {self.cfg.env_dyn.num_obstacles} dynamic obstacles")
         # Initialize a drone in prim /World/envs/envs_0
         drone_model = MultirotorBase.REGISTRY[self.cfg.drone.model_name] # drone model class
         cfg = drone_model.cfg_cls(force_sensor=False)
@@ -520,6 +521,8 @@ class NavigationEnv(IsaacEnv):
 
 
     def _reset_idx(self, env_ids: torch.Tensor):
+        if env_ids[0] == 0:  # Only log for first env
+            print(f"[NavEnv] Resetting envs: {len(env_ids)}")
         self.drone._reset_idx(env_ids, self.training)
         self.reset_target(env_ids)
         if (self.training):
@@ -574,6 +577,8 @@ class NavigationEnv(IsaacEnv):
     
     # get current states/observation
     def _compute_state_and_obs(self):
+        if hasattr(self, 'progress_buf') and self.progress_buf[0] % 100 == 0:
+            print(f"[NavEnv] Step {self.progress_buf[0]}: Avg reward: {getattr(self, 'reward', torch.tensor(0)).mean().item():.2f}")
         self.root_state = self.drone.get_state(env_frame=False) # (world_pos, orientation (quat), world_vel_and_angular, heading, up, 4motorsthrust)
         self.info["drone_state"][:] = self.root_state[..., :13] # info is for controller
 
@@ -753,6 +758,9 @@ class NavigationEnv(IsaacEnv):
         }, self.batch_size)
 
     def _compute_reward_and_done(self):
+        if hasattr(self, 'terminated') and hasattr(self, 'truncated'):
+            if self.terminated.any() or self.truncated.any():
+                print(f"[NavEnv] Episode done: {self.terminated.sum()} terminated, {self.truncated.sum()} truncated")
         reward = self.reward
         terminated = self.terminated
         truncated = self.truncated
